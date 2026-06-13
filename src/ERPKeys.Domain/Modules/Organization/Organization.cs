@@ -7,7 +7,7 @@ public enum OrganizationStatus { Active, Inactive, Suspended }
 public class Organization : BaseEntity
 {
     public string Code { get; private set; } = string.Empty;       // e.g. "CORP01"
-    public string Name { get; private set; } = string.Empty;       // e.g. "Dessert Corp"
+    public string Name { get; private set; } = string.Empty;       // e.g. "ERP Keys Corp"
     public string BaseCurrency { get; private set; } = "USD";
     public int FiscalYearStartMonth { get; private set; } = 1;     // 1 = January
     public string? Address { get; private set; }
