@@ -1,0 +1,67 @@
+using ERPKeys.Domain.Common;
+using ERPKeys.Domain.Modules.ProductManagement;
+
+namespace ERPKeys.Domain.Modules.AccountsReceivable;
+
+public class SalesOrderLine : BaseEntity
+{
+    public Guid SalesOrderId { get; private set; }
+    public Guid ProductVariantId { get; private set; }    // references ProductManagement.ProductVariant
+    public string Sku { get; private set; } = string.Empty;
+    public string ProductName { get; private set; } = string.Empty;
+    public string? VariantDescription { get; private set; }  // e.g. "Blue / XL / Cotton"
+    public string UnitOfMeasure { get; private set; } = "Each";
+    public decimal Quantity { get; private set; }
+    public decimal QuantityShipped { get; private set; }
+    public decimal UnitPrice { get; private set; }
+    public decimal DiscountPct { get; private set; }
+    public decimal TaxRate { get; private set; }
+
+    // Computed — not mapped to DB columns
+    public decimal LineSubTotal   => Math.Round(Quantity * UnitPrice, 4);
+    public decimal DiscountAmount => Math.Round(LineSubTotal * DiscountPct / 100, 4);
+    public decimal TaxableAmount  => LineSubTotal - DiscountAmount;
+    public decimal TaxAmount      => Math.Round(TaxableAmount * TaxRate / 100, 4);
+    public decimal LineTotal      => TaxableAmount + TaxAmount;
+
+    public SalesOrder? SalesOrder { get; private set; }
+    public ProductVariant? ProductVariant { get; private set; }
+
+    private SalesOrderLine() { }
+
+    public SalesOrderLine(Guid salesOrderId, Guid productVariantId, string sku,
+        string productName, string? variantDescription, string unitOfMeasure,
+        decimal quantity, decimal unitPrice, decimal taxRate, decimal discountPct = 0)
+    {
+        SalesOrderId = salesOrderId;
+        ProductVariantId = productVariantId;
+        Sku = sku;
+        ProductName = productName;
+        VariantDescription = variantDescription;
+        UnitOfMeasure = unitOfMeasure;
+        Quantity = quantity;
+        UnitPrice = unitPrice;
+        TaxRate = taxRate;
+        DiscountPct = discountPct;
+    }
+
+    public void Update(decimal quantity, decimal unitPrice, decimal discountPct)
+    {
+        if (quantity <= 0) throw new InvalidOperationException("Quantity must be positive.");
+        if (quantity < QuantityShipped)
+            throw new InvalidOperationException($"Quantity cannot be less than already shipped quantity ({QuantityShipped}).");
+        Quantity = quantity;
+        UnitPrice = unitPrice;
+        DiscountPct = discountPct;
+        SetUpdated();
+    }
+
+    public void Ship(decimal quantity)
+    {
+        if (quantity <= 0) throw new InvalidOperationException("Shipped quantity must be positive.");
+        if (QuantityShipped + quantity > Quantity)
+            throw new InvalidOperationException($"Cannot ship {quantity}; only {Quantity - QuantityShipped} remaining on line {Sku}.");
+        QuantityShipped += quantity;
+        SetUpdated();
+    }
+}
