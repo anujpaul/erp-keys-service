@@ -50,7 +50,7 @@ public static class DatabaseSeeder
             fiscalYearStartMonth: 1,
             address:  "1 Main Street, New York, NY 10001",
             phone:    "+1-800-555-0100",
-            email:    "admin@erp-keys.com",
+            email:    "admin@erkeys.com",
             taxId:    "US-00-0000000");
         db.Organizations.Add(org);
         await db.SaveChangesAsync();
@@ -822,7 +822,7 @@ public static class DatabaseSeeder
         if (!adminExists)
         {
             var passwordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123!", workFactor: 12);
-            var adminUser = new AppUser(orgId, "admin", "admin@erp-keys.com",
+            var adminUser = new AppUser(orgId, "admin", "admin@erkeys.com",
                 "System Administrator", passwordHash);
             adminUser.AssignRole(adminRole.Id);
             db.AppUsers.Add(adminUser);

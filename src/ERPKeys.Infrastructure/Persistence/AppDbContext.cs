@@ -63,6 +63,12 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Account>      Accounts      => Set<Account>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine>  JournalLines  => Set<JournalLine>();
+    public DbSet<GeneralJournalVoucherTemplate> GeneralJournalVoucherTemplates =>
+        Set<GeneralJournalVoucherTemplate>();
+    public DbSet<AccrualScheme> AccrualSchemes => Set<AccrualScheme>();
+    public DbSet<AccrualSchemeAllocation> AccrualSchemeAllocations => Set<AccrualSchemeAllocation>();
+    public DbSet<AccrualPostingRun> AccrualPostingRuns => Set<AccrualPostingRun>();
+    public DbSet<AccrualPostingLine> AccrualPostingLines => Set<AccrualPostingLine>();
     public DbSet<FinancialDimension> FinancialDimensions => Set<FinancialDimension>();
     public DbSet<FinancialDimensionValue> FinancialDimensionValues => Set<FinancialDimensionValue>();
     public DbSet<FinancialDimensionSet> FinancialDimensionSets => Set<FinancialDimensionSet>();
@@ -210,6 +216,16 @@ public class AppDbContext : DbContext, IAppDbContext
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<JournalEntry>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<GeneralJournalVoucherTemplate>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<AccrualScheme>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<AccrualSchemeAllocation>()
+            .HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<AccrualPostingRun>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<AccrualPostingLine>()
+            .HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<FinancialDimension>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<FinancialDimensionSet>()

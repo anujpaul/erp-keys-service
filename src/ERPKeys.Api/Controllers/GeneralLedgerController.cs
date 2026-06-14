@@ -43,6 +43,7 @@ public class GeneralLedgerController : ControllerBase
     }
 
     [HttpPost("ledgers/{id:guid}/set-default")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
     public async Task<IActionResult> SetDefaultLedger(Guid id, CancellationToken ct)
     {
         try { await _svc.SetDefaultLedgerAsync(id, ct); return NoContent(); }
@@ -57,6 +58,7 @@ public class GeneralLedgerController : ControllerBase
     }
 
     [HttpPut("parameters")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
     public async Task<IActionResult> UpdateParameters(
         [FromBody] UpdateGeneralLedgerParametersRequest req,
         CancellationToken ct)
@@ -274,6 +276,18 @@ public class GeneralLedgerController : ControllerBase
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpPost("journal-entries/post")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    [Authorize(Policy = PermissionKeys.GlJournalPost)]
+    public async Task<IActionResult> CreateAndPostJournalEntry(
+        [FromBody] CreateJournalEntryRequest req,
+        CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.CreateAndPostJournalEntryAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("journal-entries/{id:guid}/post")]
     [Authorize(Policy = PermissionKeys.GlJournalPost)]
     public async Task<IActionResult> PostJournalEntry(Guid id, CancellationToken ct)
@@ -287,6 +301,73 @@ public class GeneralLedgerController : ControllerBase
     public async Task<IActionResult> VoidJournalEntry(Guid id, CancellationToken ct)
     {
         try { await _svc.VoidJournalEntryAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("voucher-templates")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> GetVoucherTemplates(CancellationToken ct)
+        => Ok(await _svc.GetVoucherTemplatesAsync(ct));
+
+    [HttpPost("voucher-templates")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> SaveVoucherTemplate(
+        [FromBody] SaveGeneralJournalVoucherTemplateRequest req,
+        CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.SaveVoucherTemplateAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpDelete("voucher-templates/{id:guid}")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> DeleteVoucherTemplate(Guid id, CancellationToken ct)
+    {
+        try { await _svc.DeleteVoucherTemplateAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("accrual-schemes")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> GetAccrualSchemes(CancellationToken ct)
+        => Ok(await _svc.GetAccrualSchemesAsync(ct));
+
+    [HttpPost("accrual-schemes")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> CreateAccrualScheme(
+        [FromBody] CreateAccrualSchemeRequest req,
+        CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.CreateAccrualSchemeAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("accrual-schemes/{id:guid}/deactivate")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> DeactivateAccrualScheme(Guid id, CancellationToken ct)
+    {
+        try { await _svc.DeactivateAccrualSchemeAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("accrual-posting-runs")]
+    [Authorize(Policy = PermissionKeys.GlJournalView)]
+    public async Task<IActionResult> GetAccrualPostingRuns(
+        [FromQuery] Guid? schemeId,
+        CancellationToken ct)
+        => Ok(await _svc.GetAccrualPostingRunsAsync(schemeId, ct));
+
+    [HttpPost("accrual-schemes/{id:guid}/post")]
+    [Authorize(Policy = PermissionKeys.GlJournalPost)]
+    public async Task<IActionResult> PostAccrualScheme(
+        Guid id,
+        [FromBody] PostAccrualSchemeRequest req,
+        CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.PostAccrualSchemeAsync(id, req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 

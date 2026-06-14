@@ -56,6 +56,11 @@ public interface IAppDbContext
     DbSet<Account>       Accounts       { get; }
     DbSet<JournalEntry>  JournalEntries { get; }
     DbSet<JournalLine>   JournalLines   { get; }
+    DbSet<GeneralJournalVoucherTemplate> GeneralJournalVoucherTemplates { get; }
+    DbSet<AccrualScheme> AccrualSchemes { get; }
+    DbSet<AccrualSchemeAllocation> AccrualSchemeAllocations { get; }
+    DbSet<AccrualPostingRun> AccrualPostingRuns { get; }
+    DbSet<AccrualPostingLine> AccrualPostingLines { get; }
     DbSet<FinancialDimension> FinancialDimensions { get; }
     DbSet<FinancialDimensionValue> FinancialDimensionValues { get; }
     DbSet<FinancialDimensionSet> FinancialDimensionSets { get; }

@@ -41,6 +41,12 @@ public record GeneralLedgerParametersDto(
     Guid Id,
     Guid DefaultLedgerId,
     string DefaultLedgerCode,
+    string DefaultLedgerName,
+    Guid FiscalCalendarId,
+    string FiscalCalendarName,
+    Guid ChartOfAccountsId,
+    string ChartOfAccountsName,
+    string FunctionalCurrencyCode,
     Guid? DefaultFinancialDimensionSetId,
     string? DefaultFinancialDimensionSetName,
     Guid? RetainedEarningsAccountId,
@@ -169,6 +175,52 @@ public record CreateJournalEntryRequest(
     string Description, string Reference,
     string JournalType = "General", string Currency = "USD",
     IReadOnlyList<CreateJournalLineRequest>? Lines = null);
+
+public record GeneralJournalVoucherTemplateDto(
+    Guid Id, string Name, Guid LedgerId, string LedgerCode,
+    string Description, string Reference, string JournalType,
+    IReadOnlyList<CreateJournalLineRequest> Lines, DateTime CreatedAt);
+
+public record SaveGeneralJournalVoucherTemplateRequest(
+    string Name, Guid LedgerId, string Description, string Reference,
+    string JournalType, IReadOnlyList<CreateJournalLineRequest> Lines);
+
+public record AccrualSchemeAllocationDto(int PeriodOffset, decimal Percentage);
+
+public record AccrualSchemeDto(
+    Guid Id, string Code, string Name, string Description,
+    Guid LedgerId, string LedgerCode,
+    Guid DebitAccountId, string DebitAccountNumber, string DebitAccountName,
+    Guid CreditAccountId, string CreditAccountNumber, string CreditAccountName,
+    string JournalType, string AllocationMethod, int DefaultPeriodCount,
+    Guid? FinancialDimensionSetId, string? FinancialDimensionSetName,
+    IReadOnlyList<Guid> FinancialDimensionValueIds,
+    IReadOnlyList<AccrualSchemeAllocationDto> Allocations,
+    bool IsActive, DateTime CreatedAt);
+
+public record CreateAccrualSchemeRequest(
+    string Code, string Name, string? Description,
+    Guid LedgerId, Guid DebitAccountId, Guid CreditAccountId,
+    string JournalType, string AllocationMethod, int DefaultPeriodCount,
+    Guid? FinancialDimensionSetId,
+    IReadOnlyList<Guid>? FinancialDimensionValueIds,
+    IReadOnlyList<decimal>? AllocationPercentages);
+
+public record PostAccrualSchemeRequest(
+    Guid StartFiscalPeriodId,
+    decimal TotalAmount,
+    string Reference,
+    string? Description);
+
+public record AccrualPostingLineDto(
+    Guid FiscalPeriodId, string FiscalPeriodName,
+    Guid JournalEntryId, string JournalEntryNumber,
+    int PeriodOffset, decimal Percentage, decimal Amount);
+
+public record AccrualPostingRunDto(
+    Guid Id, Guid AccrualSchemeId, string AccrualSchemeCode,
+    string Reference, string Description, decimal TotalAmount,
+    DateTime PostedAt, IReadOnlyList<AccrualPostingLineDto> Lines);
 
 // ── Currency ──────────────────────────────────────────────────────────────────
 public record CurrencyDto(

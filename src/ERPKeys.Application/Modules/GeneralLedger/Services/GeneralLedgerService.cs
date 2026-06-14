@@ -2,6 +2,7 @@ using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Modules.GeneralLedger.DTOs;
 using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace ERPKeys.Application.Modules.GeneralLedger.Services;
 
@@ -52,8 +53,21 @@ public interface IGeneralLedgerService
     Task<IEnumerable<JournalEntryDto>> GetJournalEntriesAsync(Guid? fiscalPeriodId = null, CancellationToken ct = default);
     Task<JournalEntryDto?> GetJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task<JournalEntryDto> CreateJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
+    Task<JournalEntryDto> CreateAndPostJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
     Task PostJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task VoidJournalEntryAsync(Guid id, CancellationToken ct = default);
+    Task<IEnumerable<GeneralJournalVoucherTemplateDto>> GetVoucherTemplatesAsync(CancellationToken ct = default);
+    Task<GeneralJournalVoucherTemplateDto> SaveVoucherTemplateAsync(
+        SaveGeneralJournalVoucherTemplateRequest req, CancellationToken ct = default);
+    Task DeleteVoucherTemplateAsync(Guid id, CancellationToken ct = default);
+    Task<IEnumerable<AccrualSchemeDto>> GetAccrualSchemesAsync(CancellationToken ct = default);
+    Task<AccrualSchemeDto> CreateAccrualSchemeAsync(
+        CreateAccrualSchemeRequest req, CancellationToken ct = default);
+    Task DeactivateAccrualSchemeAsync(Guid id, CancellationToken ct = default);
+    Task<IEnumerable<AccrualPostingRunDto>> GetAccrualPostingRunsAsync(
+        Guid? schemeId = null, CancellationToken ct = default);
+    Task<AccrualPostingRunDto> PostAccrualSchemeAsync(
+        Guid schemeId, PostAccrualSchemeRequest req, CancellationToken ct = default);
     Task<IEnumerable<TrialBalanceLineDto>> GetTrialBalanceAsync(Guid fiscalPeriodId, CancellationToken ct = default);
 
     // Currencies
@@ -72,11 +86,16 @@ public class GeneralLedgerService : IGeneralLedgerService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
+    private readonly ICurrentUserService _user;
 
-    public GeneralLedgerService(IAppDbContext db, ICurrentOrganizationService org)
+    public GeneralLedgerService(
+        IAppDbContext db,
+        ICurrentOrganizationService org,
+        ICurrentUserService user)
     {
         _db = db;
         _org = org;
+        _user = user;
     }
 
     // ── Fiscal Calendar ───────────────────────────────────────────────────────
@@ -696,6 +715,17 @@ public class GeneralLedgerService : IGeneralLedgerService
     }
 
     public async Task<JournalEntryDto> CreateJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default)
+        => await CreateJournalEntryAsync(req, postImmediately: false, ct);
+
+    public async Task<JournalEntryDto> CreateAndPostJournalEntryAsync(
+        CreateJournalEntryRequest req,
+        CancellationToken ct = default)
+        => await CreateJournalEntryAsync(req, postImmediately: true, ct);
+
+    private async Task<JournalEntryDto> CreateJournalEntryAsync(
+        CreateJournalEntryRequest req,
+        bool postImmediately,
+        CancellationToken ct)
     {
         var ledger = await _db.Ledgers
             .Include(l => l.FunctionalCurrency)
@@ -769,9 +799,283 @@ public class GeneralLedgerService : IGeneralLedgerService
                 difference > 0 ? difference : 0);
         }
 
+        if (postImmediately)
+            entry.Post();
+
         _db.JournalEntries.Add(entry);
         await _db.SaveChangesAsync(ct);
         return (await GetJournalEntryAsync(entry.Id, ct))!;
+    }
+
+    public async Task<IEnumerable<GeneralJournalVoucherTemplateDto>> GetVoucherTemplatesAsync(
+        CancellationToken ct = default)
+    {
+        var userId = RequireUserId();
+        var templates = await _db.GeneralJournalVoucherTemplates
+            .Include(t => t.Ledger)
+            .Where(t => t.UserId == userId)
+            .OrderBy(t => t.Name)
+            .ToListAsync(ct);
+        return templates.Select(ToVoucherTemplateDto);
+    }
+
+    public async Task<GeneralJournalVoucherTemplateDto> SaveVoucherTemplateAsync(
+        SaveGeneralJournalVoucherTemplateRequest req,
+        CancellationToken ct = default)
+    {
+        var userId = RequireUserId();
+        var name = req.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Template name is required.");
+        if (req.Lines is null || req.Lines.Count < 2)
+            throw new InvalidOperationException("A voucher template must contain at least two lines.");
+
+        var ledger = await _db.Ledgers.FirstOrDefaultAsync(
+            l => l.Id == req.LedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+
+        var accountIds = req.Lines.Select(l => l.AccountId).Distinct().ToList();
+        var accountCount = await _db.Accounts.CountAsync(
+            a => accountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry, ct);
+        if (accountCount != accountIds.Count)
+            throw new InvalidOperationException(
+                "All template accounts must be active posting accounts in the selected ledger.");
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        foreach (var line in req.Lines)
+        {
+            if (line.Debit < 0 || line.Credit < 0 || (line.Debit > 0 && line.Credit > 0))
+                throw new InvalidOperationException(
+                    "Template line amounts must be non-negative and cannot contain both debit and credit.");
+            if (parameters?.RequireDimensionsOnJournalLines == true &&
+                !line.FinancialDimensionSetId.HasValue)
+                throw new InvalidOperationException(
+                    "A financial dimension set is required on every template line.");
+            await ValidateDimensionSelectionAsync(
+                line.FinancialDimensionSetId,
+                line.FinancialDimensionValueIds,
+                ct);
+        }
+
+        if (await _db.GeneralJournalVoucherTemplates.AnyAsync(
+            t => t.UserId == userId && t.Name.ToLower() == name.ToLower(), ct))
+            throw new InvalidOperationException($"A voucher template named '{name}' already exists.");
+
+        var template = new GeneralJournalVoucherTemplate(
+            _org.OrganizationId,
+            userId,
+            ledger.Id,
+            name,
+            req.Description,
+            req.Reference,
+            req.JournalType,
+            JsonSerializer.Serialize(req.Lines));
+        _db.GeneralJournalVoucherTemplates.Add(template);
+        await _db.SaveChangesAsync(ct);
+
+        return new GeneralJournalVoucherTemplateDto(
+            template.Id, template.Name, template.LedgerId, ledger.Code,
+            template.Description, template.Reference, template.JournalType,
+            req.Lines, template.CreatedAt);
+    }
+
+    public async Task DeleteVoucherTemplateAsync(Guid id, CancellationToken ct = default)
+    {
+        var userId = RequireUserId();
+        var template = await _db.GeneralJournalVoucherTemplates.FirstOrDefaultAsync(
+            t => t.Id == id && t.UserId == userId, ct)
+            ?? throw new InvalidOperationException("Voucher template not found.");
+        template.SoftDelete();
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<IEnumerable<AccrualSchemeDto>> GetAccrualSchemesAsync(
+        CancellationToken ct = default)
+    {
+        var schemes = await AccrualSchemesQuery()
+            .OrderByDescending(s => s.IsActive)
+            .ThenBy(s => s.Code)
+            .ToListAsync(ct);
+        return schemes.Select(ToAccrualSchemeDto);
+    }
+
+    public async Task<AccrualSchemeDto> CreateAccrualSchemeAsync(
+        CreateAccrualSchemeRequest req,
+        CancellationToken ct = default)
+    {
+        var code = req.Code.Trim().ToUpperInvariant();
+        if (await _db.AccrualSchemes.AnyAsync(s => s.Code == code, ct))
+            throw new InvalidOperationException($"Accrual scheme '{code}' already exists.");
+
+        if (!Enum.TryParse<AccrualAllocationMethod>(
+            req.AllocationMethod, ignoreCase: true, out var allocationMethod))
+            throw new ArgumentException("Allocation method must be Even or Custom.");
+
+        var ledger = await _db.Ledgers.FirstOrDefaultAsync(
+            l => l.Id == req.LedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+
+        var accountIds = new[] { req.DebitAccountId, req.CreditAccountId }.Distinct().ToList();
+        var accountCount = await _db.Accounts.CountAsync(
+            a => accountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry, ct);
+        if (accountCount != 2)
+            throw new InvalidOperationException(
+                "Debit and credit accounts must be different active posting accounts in the selected ledger.");
+
+        var dimensionValueIds = req.FinancialDimensionValueIds?.Distinct().ToList() ?? [];
+        await ValidateDimensionSelectionAsync(
+            req.FinancialDimensionSetId, dimensionValueIds, ct);
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (parameters?.RequireDimensionsOnJournalLines == true &&
+            !req.FinancialDimensionSetId.HasValue)
+            throw new InvalidOperationException(
+                "A financial dimension set is required for this accrual scheme.");
+
+        var scheme = new AccrualScheme(
+            _org.OrganizationId,
+            code,
+            req.Name,
+            req.Description,
+            ledger.Id,
+            req.DebitAccountId,
+            req.CreditAccountId,
+            req.JournalType,
+            allocationMethod,
+            req.DefaultPeriodCount,
+            req.FinancialDimensionSetId,
+            JsonSerializer.Serialize(dimensionValueIds));
+        scheme.SetAllocations(req.AllocationPercentages ?? []);
+        _db.AccrualSchemes.Add(scheme);
+        await _db.SaveChangesAsync(ct);
+
+        return ToAccrualSchemeDto(
+            await AccrualSchemesQuery().SingleAsync(s => s.Id == scheme.Id, ct));
+    }
+
+    public async Task DeactivateAccrualSchemeAsync(Guid id, CancellationToken ct = default)
+    {
+        var scheme = await _db.AccrualSchemes.FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException("Accrual scheme not found.");
+        scheme.Deactivate();
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<IEnumerable<AccrualPostingRunDto>> GetAccrualPostingRunsAsync(
+        Guid? schemeId = null,
+        CancellationToken ct = default)
+    {
+        var query = AccrualPostingRunsQuery();
+        if (schemeId.HasValue)
+            query = query.Where(r => r.AccrualSchemeId == schemeId.Value);
+        var runs = await query.OrderByDescending(r => r.PostedAt).ToListAsync(ct);
+        return runs.Select(ToAccrualPostingRunDto);
+    }
+
+    public async Task<AccrualPostingRunDto> PostAccrualSchemeAsync(
+        Guid schemeId,
+        PostAccrualSchemeRequest req,
+        CancellationToken ct = default)
+    {
+        var scheme = await AccrualSchemesQuery()
+            .SingleOrDefaultAsync(s => s.Id == schemeId && s.IsActive, ct)
+            ?? throw new InvalidOperationException("Accrual scheme not found or inactive.");
+        var ledger = scheme.Ledger
+            ?? throw new InvalidOperationException("The accrual scheme ledger could not be loaded.");
+
+        var reference = req.Reference.Trim();
+        if (await _db.AccrualPostingRuns.AnyAsync(
+            r => r.AccrualSchemeId == scheme.Id && r.Reference == reference, ct))
+            throw new InvalidOperationException(
+                $"Accrual scheme '{scheme.Code}' has already been posted with reference '{reference}'.");
+
+        var periods = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .Where(p => p.FiscalYear!.FiscalCalendarId == ledger.FiscalCalendarId)
+            .OrderBy(p => p.StartDate)
+            .ToListAsync(ct);
+        var startIndex = periods.FindIndex(p => p.Id == req.StartFiscalPeriodId);
+        if (startIndex < 0)
+            throw new InvalidOperationException(
+                "The starting fiscal period does not belong to the scheme ledger.");
+        var targetPeriods = periods.Skip(startIndex).Take(scheme.DefaultPeriodCount).ToList();
+        if (targetPeriods.Count != scheme.DefaultPeriodCount)
+            throw new InvalidOperationException(
+                "The fiscal calendar does not contain enough periods for this accrual schedule.");
+        for (var index = 1; index < targetPeriods.Count; index++)
+        {
+            if (targetPeriods[index - 1].EndDate.AddDays(1).Date != targetPeriods[index].StartDate.Date)
+                throw new InvalidOperationException("Accrual target fiscal periods must be contiguous.");
+        }
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (parameters?.AllowPostingToClosedPeriods != true &&
+            targetPeriods.Any(p => p.Status != FiscalPeriodStatus.Open))
+            throw new InvalidOperationException(
+                "All accrual target periods must be open before posting.");
+
+        var percentages = scheme.AllocationMethod == AccrualAllocationMethod.Even
+            ? CalculateEvenPercentages(scheme.DefaultPeriodCount)
+            : scheme.Allocations.OrderBy(a => a.PeriodOffset).Select(a => a.Percentage).ToList();
+        var amounts = CalculateAccrualAmounts(req.TotalAmount, percentages);
+        var dimensionValueIds =
+            JsonSerializer.Deserialize<List<Guid>>(scheme.FinancialDimensionValueIdsJson) ?? [];
+
+        var run = new AccrualPostingRun(
+            _org.OrganizationId,
+            scheme.Id,
+            _user.UserId,
+            reference,
+            req.Description ?? scheme.Description,
+            req.StartFiscalPeriodId,
+            req.TotalAmount);
+
+        var entryNumber = await _db.JournalEntries.CountAsync(ct) + 1;
+        for (var index = 0; index < targetPeriods.Count; index++)
+        {
+            var period = targetPeriods[index];
+            var amount = amounts[index];
+            var entry = new JournalEntry(
+                _org.OrganizationId,
+                $"JE-{entryNumber + index:D6}",
+                period.EndDate,
+                period.Id,
+                string.IsNullOrWhiteSpace(req.Description) ? scheme.Name : req.Description!,
+                reference,
+                scheme.JournalType,
+                ledger.FunctionalCurrency!.Code,
+                scheme.LedgerId);
+            entry.AddLine(
+                scheme.DebitAccountId,
+                $"{scheme.Name} - {period.Name}",
+                amount,
+                0,
+                scheme.FinancialDimensionSetId,
+                dimensionValueIds);
+            entry.AddLine(
+                scheme.CreditAccountId,
+                $"{scheme.Name} - {period.Name}",
+                0,
+                amount,
+                scheme.FinancialDimensionSetId,
+                dimensionValueIds);
+            entry.Post();
+            _db.JournalEntries.Add(entry);
+            run.AddLine(period.Id, entry.Id, index, percentages[index], amount);
+        }
+
+        _db.AccrualPostingRuns.Add(run);
+        await _db.SaveChangesAsync(ct);
+
+        return ToAccrualPostingRunDto(
+            await AccrualPostingRunsQuery().SingleAsync(r => r.Id == run.Id, ct));
     }
 
     public async Task PostJournalEntryAsync(Guid id, CancellationToken ct = default)
@@ -976,6 +1280,11 @@ public class GeneralLedgerService : IGeneralLedgerService
     private IQueryable<GeneralLedgerParameters> ParametersQuery() =>
         _db.GeneralLedgerParameters
             .Include(p => p.DefaultLedger)
+                .ThenInclude(l => l!.FiscalCalendar)
+            .Include(p => p.DefaultLedger)
+                .ThenInclude(l => l!.ChartOfAccounts)
+            .Include(p => p.DefaultLedger)
+                .ThenInclude(l => l!.FunctionalCurrency)
             .Include(p => p.DefaultFinancialDimensionSet)
             .Include(p => p.RetainedEarningsAccount)
             .Include(p => p.RoundingDifferenceAccount)
@@ -988,6 +1297,12 @@ public class GeneralLedgerService : IGeneralLedgerService
         p.Id,
         p.DefaultLedgerId,
         p.DefaultLedger?.Code ?? string.Empty,
+        p.DefaultLedger?.Name ?? string.Empty,
+        p.DefaultLedger?.FiscalCalendarId ?? Guid.Empty,
+        p.DefaultLedger?.FiscalCalendar?.Name ?? string.Empty,
+        p.DefaultLedger?.ChartOfAccountsId ?? Guid.Empty,
+        p.DefaultLedger?.ChartOfAccounts?.Name ?? string.Empty,
+        p.DefaultLedger?.FunctionalCurrency?.Code ?? string.Empty,
         p.DefaultFinancialDimensionSetId,
         p.DefaultFinancialDimensionSet?.Name,
         p.RetainedEarningsAccountId,
@@ -1006,6 +1321,118 @@ public class GeneralLedgerService : IGeneralLedgerService
         p.RequireDimensionsOnJournalLines,
         p.MaximumPennyDifference,
         p.DefaultJournalType);
+
+    private static GeneralJournalVoucherTemplateDto ToVoucherTemplateDto(
+        GeneralJournalVoucherTemplate template) => new(
+        template.Id,
+        template.Name,
+        template.LedgerId,
+        template.Ledger?.Code ?? string.Empty,
+        template.Description,
+        template.Reference,
+        template.JournalType,
+        JsonSerializer.Deserialize<List<CreateJournalLineRequest>>(template.LinesJson) ?? [],
+        template.CreatedAt);
+
+    private IQueryable<AccrualScheme> AccrualSchemesQuery() =>
+        _db.AccrualSchemes
+            .Include(s => s.Ledger).ThenInclude(l => l!.FunctionalCurrency)
+            .Include(s => s.DebitAccount)
+            .Include(s => s.CreditAccount)
+            .Include(s => s.FinancialDimensionSet)
+            .Include(s => s.Allocations);
+
+    private IQueryable<AccrualPostingRun> AccrualPostingRunsQuery() =>
+        _db.AccrualPostingRuns
+            .Include(r => r.AccrualScheme)
+            .Include(r => r.Lines).ThenInclude(l => l.FiscalPeriod)
+            .Include(r => r.Lines).ThenInclude(l => l.JournalEntry);
+
+    private static AccrualSchemeDto ToAccrualSchemeDto(AccrualScheme scheme) => new(
+        scheme.Id,
+        scheme.Code,
+        scheme.Name,
+        scheme.Description,
+        scheme.LedgerId,
+        scheme.Ledger?.Code ?? string.Empty,
+        scheme.DebitAccountId,
+        scheme.DebitAccount?.AccountNumber ?? string.Empty,
+        scheme.DebitAccount?.Name ?? string.Empty,
+        scheme.CreditAccountId,
+        scheme.CreditAccount?.AccountNumber ?? string.Empty,
+        scheme.CreditAccount?.Name ?? string.Empty,
+        scheme.JournalType,
+        scheme.AllocationMethod.ToString(),
+        scheme.DefaultPeriodCount,
+        scheme.FinancialDimensionSetId,
+        scheme.FinancialDimensionSet?.Name,
+        JsonSerializer.Deserialize<List<Guid>>(scheme.FinancialDimensionValueIdsJson) ?? [],
+        scheme.Allocations
+            .OrderBy(a => a.PeriodOffset)
+            .Select(a => new AccrualSchemeAllocationDto(a.PeriodOffset, a.Percentage))
+            .ToList(),
+        scheme.IsActive,
+        scheme.CreatedAt);
+
+    private static AccrualPostingRunDto ToAccrualPostingRunDto(AccrualPostingRun run) => new(
+        run.Id,
+        run.AccrualSchemeId,
+        run.AccrualScheme?.Code ?? string.Empty,
+        run.Reference,
+        run.Description,
+        run.TotalAmount,
+        run.PostedAt,
+        run.Lines
+            .OrderBy(l => l.PeriodOffset)
+            .Select(l => new AccrualPostingLineDto(
+                l.FiscalPeriodId,
+                l.FiscalPeriod?.Name ?? string.Empty,
+                l.JournalEntryId,
+                l.JournalEntry?.EntryNumber ?? string.Empty,
+                l.PeriodOffset,
+                l.Percentage,
+                l.Amount))
+            .ToList());
+
+    private static List<decimal> CalculateEvenPercentages(int count)
+    {
+        var percentages = new List<decimal>(count);
+        var allocated = 0m;
+        for (var index = 0; index < count; index++)
+        {
+            var percentage = index == count - 1
+                ? 100m - allocated
+                : Math.Round(100m / count, 4, MidpointRounding.AwayFromZero);
+            percentages.Add(percentage);
+            allocated += percentage;
+        }
+        return percentages;
+    }
+
+    private static List<decimal> CalculateAccrualAmounts(
+        decimal totalAmount,
+        IReadOnlyList<decimal> percentages)
+    {
+        if (totalAmount <= 0)
+            throw new ArgumentException("Accrual amount must be greater than zero.");
+        var amounts = new List<decimal>(percentages.Count);
+        var allocated = 0m;
+        for (var index = 0; index < percentages.Count; index++)
+        {
+            var amount = index == percentages.Count - 1
+                ? totalAmount - allocated
+                : Math.Round(
+                    totalAmount * percentages[index] / 100m,
+                    4,
+                    MidpointRounding.AwayFromZero);
+            if (amount <= 0)
+                throw new InvalidOperationException(
+                    "The accrual amount is too small for the configured allocation schedule.");
+            amounts.Add(amount);
+            allocated += amount;
+        }
+        return amounts;
+    }
 
     private static JournalEntryDto ToJournalEntryDto(JournalEntry e) => new(
         e.Id, e.LedgerId, e.Ledger?.Code ?? string.Empty,
@@ -1073,4 +1500,8 @@ public class GeneralLedgerService : IGeneralLedgerService
             throw new InvalidOperationException(
                 "All required financial dimensions must have a value.");
     }
+
+    private Guid RequireUserId() =>
+        _user.UserId ?? throw new InvalidOperationException(
+            "An authenticated user is required to manage voucher templates.");
 }

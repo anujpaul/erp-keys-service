@@ -208,6 +208,100 @@ public class JournalLineConfiguration : IEntityTypeConfiguration<JournalLine>
     }
 }
 
+public class GeneralJournalVoucherTemplateConfiguration
+    : IEntityTypeConfiguration<GeneralJournalVoucherTemplate>
+{
+    public void Configure(EntityTypeBuilder<GeneralJournalVoucherTemplate> b)
+    {
+        b.ToTable("general_journal_voucher_templates");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.UserId).IsRequired();
+        b.Property(e => e.LedgerId).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(100).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.Property(e => e.Reference).HasMaxLength(100);
+        b.Property(e => e.JournalType).HasMaxLength(50).IsRequired();
+        b.Property(e => e.LinesJson).HasColumnType("jsonb").IsRequired();
+        b.HasIndex(e => new { e.OrganizationId, e.UserId, e.Name })
+            .IsUnique()
+            .HasFilter("is_deleted = FALSE");
+        b.HasOne(e => e.Ledger).WithMany()
+            .HasForeignKey(e => e.LedgerId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class AccrualSchemeConfiguration : IEntityTypeConfiguration<AccrualScheme>
+{
+    public void Configure(EntityTypeBuilder<AccrualScheme> b)
+    {
+        b.ToTable("accrual_schemes");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Code).HasMaxLength(30).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(150).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.Property(e => e.JournalType).HasMaxLength(50).IsRequired();
+        b.Property(e => e.AllocationMethod).HasConversion<string>().HasMaxLength(20);
+        b.Property(e => e.FinancialDimensionValueIdsJson).HasColumnType("jsonb").IsRequired();
+        b.HasIndex(e => new { e.OrganizationId, e.Code }).IsUnique();
+        b.HasOne(e => e.Ledger).WithMany()
+            .HasForeignKey(e => e.LedgerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.DebitAccount).WithMany()
+            .HasForeignKey(e => e.DebitAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.CreditAccount).WithMany()
+            .HasForeignKey(e => e.CreditAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.FinancialDimensionSet).WithMany()
+            .HasForeignKey(e => e.FinancialDimensionSetId).OnDelete(DeleteBehavior.Restrict);
+        b.HasMany(e => e.Allocations).WithOne(e => e.AccrualScheme)
+            .HasForeignKey(e => e.AccrualSchemeId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccrualSchemeAllocationConfiguration
+    : IEntityTypeConfiguration<AccrualSchemeAllocation>
+{
+    public void Configure(EntityTypeBuilder<AccrualSchemeAllocation> b)
+    {
+        b.ToTable("accrual_scheme_allocations");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Percentage).HasColumnType("numeric(9,4)");
+        b.HasIndex(e => new { e.AccrualSchemeId, e.PeriodOffset }).IsUnique();
+    }
+}
+
+public class AccrualPostingRunConfiguration : IEntityTypeConfiguration<AccrualPostingRun>
+{
+    public void Configure(EntityTypeBuilder<AccrualPostingRun> b)
+    {
+        b.ToTable("accrual_posting_runs");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Reference).HasMaxLength(100).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.Property(e => e.TotalAmount).HasColumnType("numeric(18,4)");
+        b.HasIndex(e => new { e.OrganizationId, e.AccrualSchemeId, e.Reference }).IsUnique();
+        b.HasOne(e => e.AccrualScheme).WithMany()
+            .HasForeignKey(e => e.AccrualSchemeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasMany(e => e.Lines).WithOne(e => e.AccrualPostingRun)
+            .HasForeignKey(e => e.AccrualPostingRunId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class AccrualPostingLineConfiguration : IEntityTypeConfiguration<AccrualPostingLine>
+{
+    public void Configure(EntityTypeBuilder<AccrualPostingLine> b)
+    {
+        b.ToTable("accrual_posting_lines");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Percentage).HasColumnType("numeric(9,4)");
+        b.Property(e => e.Amount).HasColumnType("numeric(18,4)");
+        b.HasIndex(e => new { e.AccrualPostingRunId, e.PeriodOffset }).IsUnique();
+        b.HasOne(e => e.FiscalPeriod).WithMany()
+            .HasForeignKey(e => e.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.JournalEntry).WithMany()
+            .HasForeignKey(e => e.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class FinancialDimensionConfiguration : IEntityTypeConfiguration<FinancialDimension>
 {
     public void Configure(EntityTypeBuilder<FinancialDimension> b)
