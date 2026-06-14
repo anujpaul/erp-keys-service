@@ -16,6 +16,64 @@ public record CreateFiscalCalendarRequest(
     string CalendarType,
     bool IsDefault = false);
 
+public record ChartOfAccountsDto(
+    Guid Id, string Code, string Name, string Description,
+    bool IsDefault, bool IsActive, int AccountCount);
+
+public record CreateChartOfAccountsRequest(
+    string Code, string Name, string? Description = null, bool IsDefault = false);
+
+public record LedgerDto(
+    Guid Id, string Code, string Name, string Description,
+    Guid FunctionalCurrencyId, string FunctionalCurrencyCode,
+    Guid? ReportingCurrencyId, string? ReportingCurrencyCode,
+    Guid FiscalCalendarId, string FiscalCalendarName,
+    Guid ChartOfAccountsId, string ChartOfAccountsName,
+    bool IsDefault, bool IsActive);
+
+public record CreateLedgerRequest(
+    string Code, string Name, Guid FunctionalCurrencyId,
+    Guid FiscalCalendarId, Guid ChartOfAccountsId,
+    Guid? ReportingCurrencyId = null,
+    string? Description = null, bool IsDefault = false);
+
+public record GeneralLedgerParametersDto(
+    Guid Id,
+    Guid DefaultLedgerId,
+    string DefaultLedgerCode,
+    Guid? DefaultFinancialDimensionSetId,
+    string? DefaultFinancialDimensionSetName,
+    Guid? RetainedEarningsAccountId,
+    string? RetainedEarningsAccountNumber,
+    Guid? RoundingDifferenceAccountId,
+    string? RoundingDifferenceAccountNumber,
+    Guid? RealizedGainAccountId,
+    string? RealizedGainAccountNumber,
+    Guid? RealizedLossAccountId,
+    string? RealizedLossAccountNumber,
+    Guid? UnrealizedGainAccountId,
+    string? UnrealizedGainAccountNumber,
+    Guid? UnrealizedLossAccountId,
+    string? UnrealizedLossAccountNumber,
+    bool AllowPostingToClosedPeriods,
+    bool RequireDimensionsOnJournalLines,
+    decimal MaximumPennyDifference,
+    string DefaultJournalType);
+
+public record UpdateGeneralLedgerParametersRequest(
+    Guid DefaultLedgerId,
+    Guid? DefaultFinancialDimensionSetId,
+    Guid? RetainedEarningsAccountId,
+    Guid? RoundingDifferenceAccountId,
+    Guid? RealizedGainAccountId,
+    Guid? RealizedLossAccountId,
+    Guid? UnrealizedGainAccountId,
+    Guid? UnrealizedLossAccountId,
+    bool AllowPostingToClosedPeriods = false,
+    bool RequireDimensionsOnJournalLines = false,
+    decimal MaximumPennyDifference = 0.01m,
+    string DefaultJournalType = "General");
+
 public record FiscalYearDto(Guid Id, string Name, string Description,
     Guid FiscalCalendarId, string FiscalCalendarName,
     DateTime StartDate, DateTime EndDate, string CalendarType,
@@ -43,14 +101,14 @@ public record UpdatePeriodRequest(string Name, DateTime StartDate, DateTime EndD
 // ── Chart of Accounts ─────────────────────────────────────────────────────────
 public record AccountTypeDto(Guid Id, string Code, string Name, string Nature, int DisplayOrder);
 
-public record AccountDto(Guid Id, string AccountNumber, string Name,
+public record AccountDto(Guid Id, Guid ChartOfAccountsId, string AccountNumber, string Name,
     string? Description, Guid AccountTypeId, string AccountTypeName,
     Guid? ParentAccountId, string? ParentAccountName,
     bool IsHeaderAccount, bool AllowManualEntry,
     string Status, string Currency, int Level);
 
 public record CreateAccountRequest(
-    string AccountNumber, string Name, Guid AccountTypeId,
+    Guid? ChartOfAccountsId, string AccountNumber, string Name, Guid AccountTypeId,
     bool IsHeaderAccount, Guid? ParentAccountId = null,
     string? Description = null, string Currency = "USD");
 
@@ -94,7 +152,8 @@ public record JournalLineDto(Guid Id, Guid AccountId, string AccountNumber,
     Guid? FinancialDimensionSetId, string? FinancialDimensionSetName,
     IReadOnlyList<JournalLineDimensionDto> Dimensions);
 
-public record JournalEntryDto(Guid Id, string EntryNumber, DateTime EntryDate,
+public record JournalEntryDto(Guid Id, Guid LedgerId, string LedgerCode,
+    string EntryNumber, DateTime EntryDate,
     Guid FiscalPeriodId, string FiscalPeriodName, string Description,
     string Reference, string JournalType, string Status, string Currency,
     decimal TotalDebit, decimal TotalCredit, DateTime CreatedAt,
@@ -106,7 +165,7 @@ public record CreateJournalLineRequest(Guid AccountId, string Description,
     IReadOnlyList<Guid>? FinancialDimensionValueIds = null);
 
 public record CreateJournalEntryRequest(
-    DateTime EntryDate, Guid FiscalPeriodId,
+    Guid LedgerId, DateTime EntryDate, Guid FiscalPeriodId,
     string Description, string Reference,
     string JournalType = "General", string Currency = "USD",
     IReadOnlyList<CreateJournalLineRequest>? Lines = null);

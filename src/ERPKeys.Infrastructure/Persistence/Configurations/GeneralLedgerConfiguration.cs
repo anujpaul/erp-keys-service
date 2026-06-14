@@ -70,6 +70,77 @@ public class AccountTypeConfiguration : IEntityTypeConfiguration<AccountType>
     }
 }
 
+public class ChartOfAccountsConfiguration : IEntityTypeConfiguration<ChartOfAccounts>
+{
+    public void Configure(EntityTypeBuilder<ChartOfAccounts> b)
+    {
+        b.ToTable("charts_of_accounts");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.Code).HasMaxLength(30).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(150).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.HasIndex(e => new { e.OrganizationId, e.Code }).IsUnique();
+        b.HasIndex(e => e.OrganizationId).IsUnique()
+            .HasFilter("is_default = TRUE AND is_deleted = FALSE");
+        b.HasMany(e => e.Accounts).WithOne(e => e.ChartOfAccounts)
+            .HasForeignKey(e => e.ChartOfAccountsId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LedgerConfiguration : IEntityTypeConfiguration<Ledger>
+{
+    public void Configure(EntityTypeBuilder<Ledger> b)
+    {
+        b.ToTable("ledgers");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.Code).HasMaxLength(30).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(150).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.HasIndex(e => new { e.OrganizationId, e.Code }).IsUnique();
+        b.HasIndex(e => e.OrganizationId).IsUnique()
+            .HasFilter("is_default = TRUE AND is_deleted = FALSE");
+        b.HasOne(e => e.FunctionalCurrency).WithMany()
+            .HasForeignKey(e => e.FunctionalCurrencyId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.ReportingCurrency).WithMany()
+            .HasForeignKey(e => e.ReportingCurrencyId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.FiscalCalendar).WithMany()
+            .HasForeignKey(e => e.FiscalCalendarId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.ChartOfAccounts).WithMany()
+            .HasForeignKey(e => e.ChartOfAccountsId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class GeneralLedgerParametersConfiguration : IEntityTypeConfiguration<GeneralLedgerParameters>
+{
+    public void Configure(EntityTypeBuilder<GeneralLedgerParameters> b)
+    {
+        b.ToTable("general_ledger_parameters");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.MaximumPennyDifference).HasColumnType("numeric(18,4)");
+        b.Property(e => e.DefaultJournalType).HasMaxLength(50).IsRequired();
+        b.HasIndex(e => e.OrganizationId).IsUnique();
+        b.HasOne(e => e.DefaultLedger).WithMany()
+            .HasForeignKey(e => e.DefaultLedgerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.DefaultFinancialDimensionSet).WithMany()
+            .HasForeignKey(e => e.DefaultFinancialDimensionSetId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.RetainedEarningsAccount).WithMany()
+            .HasForeignKey(e => e.RetainedEarningsAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.RoundingDifferenceAccount).WithMany()
+            .HasForeignKey(e => e.RoundingDifferenceAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.RealizedGainAccount).WithMany()
+            .HasForeignKey(e => e.RealizedGainAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.RealizedLossAccount).WithMany()
+            .HasForeignKey(e => e.RealizedLossAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.UnrealizedGainAccount).WithMany()
+            .HasForeignKey(e => e.UnrealizedGainAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.UnrealizedLossAccount).WithMany()
+            .HasForeignKey(e => e.UnrealizedLossAccountId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class AccountConfiguration : IEntityTypeConfiguration<Account>
 {
     public void Configure(EntityTypeBuilder<Account> b)
@@ -77,13 +148,14 @@ public class AccountConfiguration : IEntityTypeConfiguration<Account>
         b.ToTable("accounts");
         b.HasKey(e => e.Id);
         b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.ChartOfAccountsId).IsRequired();
         b.Property(e => e.AccountNumber).HasMaxLength(20).IsRequired();
         b.Property(e => e.Name).HasMaxLength(200).IsRequired();
         b.Property(e => e.Description).HasMaxLength(500);
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(e => e.Currency).HasMaxLength(3);
         // Unique per org (same number can exist in different orgs)
-        b.HasIndex(e => new { e.OrganizationId, e.AccountNumber }).IsUnique();
+        b.HasIndex(e => new { e.ChartOfAccountsId, e.AccountNumber }).IsUnique();
         b.HasOne(e => e.AccountType).WithMany().HasForeignKey(e => e.AccountTypeId);
         b.HasOne(e => e.ParentAccount).WithMany().HasForeignKey(e => e.ParentAccountId);
         // Query filter applied in AppDbContext.OnModelCreating
@@ -97,6 +169,7 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.ToTable("journal_entries");
         b.HasKey(e => e.Id);
         b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.LedgerId).IsRequired();
         b.Property(e => e.EntryNumber).HasMaxLength(20).IsRequired();
         b.Property(e => e.Description).HasMaxLength(500);
         b.Property(e => e.Reference).HasMaxLength(100);
@@ -106,6 +179,8 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.Property(e => e.TotalDebit).HasColumnType("numeric(18,4)");
         b.Property(e => e.TotalCredit).HasColumnType("numeric(18,4)");
         b.HasOne(e => e.FiscalPeriod).WithMany().HasForeignKey(e => e.FiscalPeriodId);
+        b.HasOne(e => e.Ledger).WithMany().HasForeignKey(e => e.LedgerId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.HasMany(e => e.Lines).WithOne(l => l.JournalEntry)
             .HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.EntryNumber }).IsUnique();

@@ -7,6 +7,7 @@ public enum AccountStatus { Active, Inactive, Suspended }
 public class Account : BaseEntity
 {
     public Guid OrganizationId { get; private set; }
+    public Guid ChartOfAccountsId { get; private set; }
     public string AccountNumber { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
@@ -20,14 +21,17 @@ public class Account : BaseEntity
 
     public AccountType? AccountType { get; private set; }
     public Account? ParentAccount { get; private set; }
+    public ChartOfAccounts? ChartOfAccounts { get; private set; }
 
     private Account() { }
 
     public Account(Guid organizationId, string accountNumber, string name, Guid accountTypeId,
         bool isHeaderAccount, Guid? parentAccountId = null,
-        string? description = null, string currency = "USD", int level = 1)
+        string? description = null, string currency = "USD", int level = 1,
+        Guid chartOfAccountsId = default)
     {
         OrganizationId = organizationId;
+        ChartOfAccountsId = chartOfAccountsId;
         AccountNumber = accountNumber;
         Name = name;
         AccountTypeId = accountTypeId;

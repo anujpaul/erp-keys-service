@@ -358,10 +358,13 @@ public class RetailStatementService : IRetailStatementService
         if (transactions.Count == 0)
             throw new InvalidOperationException("The retail statement has no transactions.");
 
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.OrganizationId == statement.OrganizationId && l.IsDefault && l.IsActive, ct)
+            ?? throw new InvalidOperationException("No active default ledger is configured.");
         var period = await _db.FiscalPeriods.Include(p => p.FiscalYear)
-                .ThenInclude(y => y!.FiscalCalendar)
             .FirstOrDefaultAsync(p => p.FiscalYear!.OrganizationId == statement.OrganizationId &&
-                p.FiscalYear.FiscalCalendar!.IsDefault &&
+                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
                 p.FiscalYear.Status == FiscalYearStatus.Open &&
                 p.Status == FiscalPeriodStatus.Open &&
                 p.StartDate.Date <= statement.BusinessDate &&
@@ -404,7 +407,8 @@ public class RetailStatementService : IRetailStatementService
         var journalCount = await _db.JournalEntries.CountAsync(ct) + 1;
         var journal = new JournalEntry(statement.OrganizationId, $"JE-{journalCount:D6}",
             statement.BusinessDate, period.Id, $"Retail statement {statement.StatementNumber}",
-            statement.StatementNumber, "RetailStatement", statement.Currency);
+            statement.StatementNumber, "RetailStatement",
+            ledger.FunctionalCurrency?.Code ?? statement.Currency, ledger.Id);
         _db.JournalEntries.Add(journal);
 
         var accounts = await LoadOrCreateAccountsAsync(statement.OrganizationId, ct);
@@ -545,10 +549,13 @@ public class RetailStatementService : IRetailStatementService
         _db.BankTransactions.Add(bankTx);
         bankAccount.AdjustBalance(deposit);
 
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.OrganizationId == settlement.OrganizationId && l.IsDefault && l.IsActive, ct)
+            ?? throw new InvalidOperationException("No active default ledger is configured.");
         var period = await _db.FiscalPeriods.Include(p => p.FiscalYear)
-                .ThenInclude(y => y!.FiscalCalendar)
             .FirstOrDefaultAsync(p => p.FiscalYear!.OrganizationId == settlement.OrganizationId &&
-                p.FiscalYear.FiscalCalendar!.IsDefault &&
+                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
                 p.FiscalYear.Status == FiscalYearStatus.Open &&
                 p.Status == FiscalPeriodStatus.Open &&
                 p.StartDate.Date <= DateTime.UtcNow.Date &&
@@ -560,7 +567,7 @@ public class RetailStatementService : IRetailStatementService
         var journal = new JournalEntry(settlement.OrganizationId, $"JE-{journalCount:D6}",
             DateTime.UtcNow.Date, period.Id, "Credit card processor settlement",
             processorReference ?? settlement.ProcessorReference ?? settlement.Id.ToString(),
-            "CardSettlement", settlement.Currency);
+            "CardSettlement", ledger.FunctionalCurrency?.Code ?? settlement.Currency, ledger.Id);
         journal.AddLine(bankGlAccountId, "Processor deposit", deposit, 0m);
         if (merchantFee > 0)
             journal.AddLine(accounts["6900"].Id, "Merchant processing fee", merchantFee, 0m);
@@ -576,7 +583,11 @@ public class RetailStatementService : IRetailStatementService
         Guid organizationId, CancellationToken ct)
     {
         var required = new[] { "1110", "1120", "1130", "1210", "1310", "2210", "2310", "4100", "5100", "6900" };
+        var chart = await _db.ChartsOfAccounts
+            .FirstOrDefaultAsync(c => c.OrganizationId == organizationId && c.IsDefault && c.IsActive, ct)
+            ?? throw new InvalidOperationException("No active default chart of accounts is configured.");
         var accounts = await _db.Accounts.Where(a => a.OrganizationId == organizationId &&
+            a.ChartOfAccountsId == chart.Id &&
             required.Contains(a.AccountNumber) && !a.IsHeaderAccount)
             .ToDictionaryAsync(a => a.AccountNumber, ct);
         if (!accounts.ContainsKey("1130") || !accounts.ContainsKey("2310"))
@@ -585,13 +596,15 @@ public class RetailStatementService : IRetailStatementService
             var liabilityType = await _db.AccountTypes.FirstAsync(t => t.Code == "LIABILITY", ct);
             if (!accounts.ContainsKey("1130"))
             {
-                var account = new Account(organizationId, "1130", "Credit Card Clearing", assetType.Id, false);
+                var account = new Account(organizationId, "1130", "Credit Card Clearing",
+                    assetType.Id, false, chartOfAccountsId: chart.Id);
                 _db.Accounts.Add(account);
                 accounts["1130"] = account;
             }
             if (!accounts.ContainsKey("2310"))
             {
-                var account = new Account(organizationId, "2310", "Gift Card Liability", liabilityType.Id, false);
+                var account = new Account(organizationId, "2310", "Gift Card Liability",
+                    liabilityType.Id, false, chartOfAccountsId: chart.Id);
                 _db.Accounts.Add(account);
                 accounts["2310"] = account;
             }

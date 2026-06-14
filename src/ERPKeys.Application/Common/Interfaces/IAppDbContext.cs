@@ -49,6 +49,9 @@ public interface IAppDbContext
     DbSet<FiscalCalendar> FiscalCalendars { get; }
     DbSet<FiscalYear>    FiscalYears    { get; }
     DbSet<FiscalPeriod>  FiscalPeriods  { get; }
+    DbSet<ChartOfAccounts> ChartsOfAccounts { get; }
+    DbSet<Ledger> Ledgers { get; }
+    DbSet<GeneralLedgerParameters> GeneralLedgerParameters { get; }
     DbSet<AccountType>   AccountTypes   { get; }
     DbSet<Account>       Accounts       { get; }
     DbSet<JournalEntry>  JournalEntries { get; }

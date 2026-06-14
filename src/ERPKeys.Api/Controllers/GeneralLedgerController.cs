@@ -16,6 +16,56 @@ public class GeneralLedgerController : ControllerBase
     private readonly IGeneralLedgerService _svc;
     public GeneralLedgerController(IGeneralLedgerService svc) => _svc = svc;
 
+    [HttpGet("charts-of-accounts")]
+    public async Task<IActionResult> GetChartsOfAccounts(CancellationToken ct)
+        => Ok(await _svc.GetChartsOfAccountsAsync(ct));
+
+    [HttpPost("charts-of-accounts")]
+    public async Task<IActionResult> CreateChartOfAccounts(
+        [FromBody] CreateChartOfAccountsRequest req, CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.CreateChartOfAccountsAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("ledgers")]
+    public async Task<IActionResult> GetLedgers(CancellationToken ct)
+        => Ok(await _svc.GetLedgersAsync(ct));
+
+    [HttpPost("ledgers")]
+    public async Task<IActionResult> CreateLedger(
+        [FromBody] CreateLedgerRequest req, CancellationToken ct)
+    {
+        try { return StatusCode(201, await _svc.CreateLedgerAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("ledgers/{id:guid}/set-default")]
+    public async Task<IActionResult> SetDefaultLedger(Guid id, CancellationToken ct)
+    {
+        try { await _svc.SetDefaultLedgerAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("parameters")]
+    public async Task<IActionResult> GetParameters(CancellationToken ct)
+    {
+        var parameters = await _svc.GetParametersAsync(ct);
+        return parameters is null ? NotFound() : Ok(parameters);
+    }
+
+    [HttpPut("parameters")]
+    public async Task<IActionResult> UpdateParameters(
+        [FromBody] UpdateGeneralLedgerParametersRequest req,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.UpdateParametersAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     // ── Fiscal Calendar ───────────────────────────────────────────────────────
 
     [HttpGet("fiscal-calendars")]
@@ -118,8 +168,9 @@ public class GeneralLedgerController : ControllerBase
         => Ok(await _svc.GetAccountTypesAsync(ct));
 
     [HttpGet("accounts")]
-    public async Task<IActionResult> GetAccounts(CancellationToken ct)
-        => Ok(await _svc.GetAccountsAsync(ct));
+    public async Task<IActionResult> GetAccounts(
+        [FromQuery] Guid? chartOfAccountsId, CancellationToken ct)
+        => Ok(await _svc.GetAccountsAsync(chartOfAccountsId, ct));
 
     [HttpPost("accounts")]
     public async Task<IActionResult> CreateAccount([FromBody] CreateAccountRequest req, CancellationToken ct)

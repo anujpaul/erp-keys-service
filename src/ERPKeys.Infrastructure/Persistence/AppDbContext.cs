@@ -56,6 +56,9 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<FiscalCalendar> FiscalCalendars => Set<FiscalCalendar>();
     public DbSet<FiscalYear>   FiscalYears   => Set<FiscalYear>();
     public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
+    public DbSet<ChartOfAccounts> ChartsOfAccounts => Set<ChartOfAccounts>();
+    public DbSet<Ledger> Ledgers => Set<Ledger>();
+    public DbSet<GeneralLedgerParameters> GeneralLedgerParameters => Set<GeneralLedgerParameters>();
     public DbSet<AccountType>  AccountTypes  => Set<AccountType>();
     public DbSet<Account>      Accounts      => Set<Account>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
@@ -196,6 +199,12 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.Entity<FiscalCalendar>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<FiscalYear>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<ChartOfAccounts>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<Ledger>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<GeneralLedgerParameters>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<Account>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));

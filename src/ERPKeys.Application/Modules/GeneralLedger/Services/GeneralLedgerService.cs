@@ -7,6 +7,14 @@ namespace ERPKeys.Application.Modules.GeneralLedger.Services;
 
 public interface IGeneralLedgerService
 {
+    Task<IEnumerable<ChartOfAccountsDto>> GetChartsOfAccountsAsync(CancellationToken ct = default);
+    Task<ChartOfAccountsDto> CreateChartOfAccountsAsync(CreateChartOfAccountsRequest req, CancellationToken ct = default);
+    Task<IEnumerable<LedgerDto>> GetLedgersAsync(CancellationToken ct = default);
+    Task<LedgerDto> CreateLedgerAsync(CreateLedgerRequest req, CancellationToken ct = default);
+    Task SetDefaultLedgerAsync(Guid id, CancellationToken ct = default);
+    Task<GeneralLedgerParametersDto?> GetParametersAsync(CancellationToken ct = default);
+    Task<GeneralLedgerParametersDto> UpdateParametersAsync(UpdateGeneralLedgerParametersRequest req, CancellationToken ct = default);
+
     // Fiscal Calendar
     Task<IEnumerable<FiscalCalendarDto>> GetFiscalCalendarsAsync(CancellationToken ct = default);
     Task<FiscalCalendarDto> CreateFiscalCalendarAsync(CreateFiscalCalendarRequest req, CancellationToken ct = default);
@@ -25,7 +33,7 @@ public interface IGeneralLedgerService
 
     // Chart of Accounts
     Task<IEnumerable<AccountTypeDto>> GetAccountTypesAsync(CancellationToken ct = default);
-    Task<IEnumerable<AccountDto>> GetAccountsAsync(CancellationToken ct = default);
+    Task<IEnumerable<AccountDto>> GetAccountsAsync(Guid? chartOfAccountsId = null, CancellationToken ct = default);
     Task<AccountDto> CreateAccountAsync(CreateAccountRequest req, CancellationToken ct = default);
     Task DeactivateAccountAsync(Guid id, CancellationToken ct = default);
 
@@ -81,6 +89,190 @@ public class GeneralLedgerService : IGeneralLedgerService
             .ThenBy(c => c.Name)
             .ToListAsync(ct);
         return calendars.Select(ToFiscalCalendarDto);
+    }
+
+    public async Task<IEnumerable<ChartOfAccountsDto>> GetChartsOfAccountsAsync(CancellationToken ct = default)
+    {
+        var charts = await _db.ChartsOfAccounts.Include(c => c.Accounts)
+            .OrderByDescending(c => c.IsDefault).ThenBy(c => c.Name).ToListAsync(ct);
+        return charts.Select(ToChartOfAccountsDto);
+    }
+
+    public async Task<ChartOfAccountsDto> CreateChartOfAccountsAsync(
+        CreateChartOfAccountsRequest req, CancellationToken ct = default)
+    {
+        var code = req.Code.Trim().ToUpperInvariant();
+        if (await _db.ChartsOfAccounts.AnyAsync(c => c.Code == code, ct))
+            throw new InvalidOperationException($"Chart of accounts '{code}' already exists.");
+
+        var makeDefault = req.IsDefault || !await _db.ChartsOfAccounts.AnyAsync(ct);
+        if (makeDefault)
+            await _db.ChartsOfAccounts.Where(c => c.IsDefault)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsDefault, false), ct);
+
+        var chart = new ChartOfAccounts(
+            _org.OrganizationId, code, req.Name, req.Description, makeDefault);
+        _db.ChartsOfAccounts.Add(chart);
+        await _db.SaveChangesAsync(ct);
+        return ToChartOfAccountsDto(chart);
+    }
+
+    public async Task<IEnumerable<LedgerDto>> GetLedgersAsync(CancellationToken ct = default)
+    {
+        var ledgers = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .Include(l => l.ReportingCurrency)
+            .Include(l => l.FiscalCalendar)
+            .Include(l => l.ChartOfAccounts)
+            .OrderByDescending(l => l.IsDefault).ThenBy(l => l.Name)
+            .ToListAsync(ct);
+        return ledgers.Select(ToLedgerDto);
+    }
+
+    public async Task<LedgerDto> CreateLedgerAsync(
+        CreateLedgerRequest req, CancellationToken ct = default)
+    {
+        var code = req.Code.Trim().ToUpperInvariant();
+        if (await _db.Ledgers.AnyAsync(l => l.Code == code, ct))
+            throw new InvalidOperationException($"Ledger '{code}' already exists.");
+
+        var currency = await _db.Currencies.FirstOrDefaultAsync(
+            c => c.Id == req.FunctionalCurrencyId && c.IsActive, ct)
+            ?? throw new InvalidOperationException("Functional currency not found or inactive.");
+        Currency? reportingCurrency = null;
+        if (req.ReportingCurrencyId.HasValue)
+        {
+            reportingCurrency = await _db.Currencies.FirstOrDefaultAsync(
+                c => c.Id == req.ReportingCurrencyId.Value && c.IsActive, ct)
+                ?? throw new InvalidOperationException("Reporting currency not found or inactive.");
+            if (reportingCurrency.Id == currency.Id)
+                throw new InvalidOperationException(
+                    "Reporting currency must differ from functional currency.");
+        }
+        var calendar = await _db.FiscalCalendars.FirstOrDefaultAsync(
+            c => c.Id == req.FiscalCalendarId, ct)
+            ?? throw new InvalidOperationException("Fiscal calendar not found.");
+        var chart = await _db.ChartsOfAccounts.FirstOrDefaultAsync(
+            c => c.Id == req.ChartOfAccountsId && c.IsActive, ct)
+            ?? throw new InvalidOperationException("Chart of accounts not found or inactive.");
+
+        var makeDefault = req.IsDefault || !await _db.Ledgers.AnyAsync(ct);
+        if (makeDefault)
+            await _db.Ledgers.Where(l => l.IsDefault)
+                .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false), ct);
+
+        var ledger = new Ledger(_org.OrganizationId, code, req.Name,
+            currency.Id, calendar.Id, chart.Id, req.Description, makeDefault,
+            reportingCurrency?.Id);
+        _db.Ledgers.Add(ledger);
+        await _db.SaveChangesAsync(ct);
+        return new LedgerDto(ledger.Id, ledger.Code, ledger.Name, ledger.Description,
+            currency.Id, currency.Code, reportingCurrency?.Id, reportingCurrency?.Code,
+            calendar.Id, calendar.Name,
+            chart.Id, chart.Name, ledger.IsDefault, ledger.IsActive);
+    }
+
+    public async Task SetDefaultLedgerAsync(Guid id, CancellationToken ct = default)
+    {
+        var ledger = await _db.Ledgers.FirstOrDefaultAsync(l => l.Id == id, ct)
+            ?? throw new InvalidOperationException("Ledger not found.");
+        if (ledger.IsDefault) return;
+        await _db.Ledgers.Where(l => l.IsDefault)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false), ct);
+        ledger.SetDefault(true);
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (parameters is not null)
+        {
+            parameters.Update(
+                ledger.Id,
+                parameters.DefaultFinancialDimensionSetId,
+                parameters.RetainedEarningsAccountId,
+                parameters.RoundingDifferenceAccountId,
+                parameters.RealizedGainAccountId,
+                parameters.RealizedLossAccountId,
+                parameters.UnrealizedGainAccountId,
+                parameters.UnrealizedLossAccountId,
+                parameters.AllowPostingToClosedPeriods,
+                parameters.RequireDimensionsOnJournalLines,
+                parameters.MaximumPennyDifference,
+                parameters.DefaultJournalType);
+        }
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<GeneralLedgerParametersDto?> GetParametersAsync(
+        CancellationToken ct = default)
+    {
+        var parameters = await ParametersQuery().FirstOrDefaultAsync(ct);
+        return parameters is null ? null : ToParametersDto(parameters);
+    }
+
+    public async Task<GeneralLedgerParametersDto> UpdateParametersAsync(
+        UpdateGeneralLedgerParametersRequest req,
+        CancellationToken ct = default)
+    {
+        var ledger = await _db.Ledgers.FirstOrDefaultAsync(
+            l => l.Id == req.DefaultLedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Default ledger not found or inactive.");
+
+        if (req.DefaultFinancialDimensionSetId.HasValue &&
+            !await _db.FinancialDimensionSets.AnyAsync(
+                s => s.Id == req.DefaultFinancialDimensionSetId.Value && s.IsActive, ct))
+        {
+            throw new InvalidOperationException(
+                "Default financial dimension set not found or inactive.");
+        }
+
+        var systemAccountIds = new[]
+        {
+            req.RetainedEarningsAccountId,
+            req.RoundingDifferenceAccountId,
+            req.RealizedGainAccountId,
+            req.RealizedLossAccountId,
+            req.UnrealizedGainAccountId,
+            req.UnrealizedLossAccountId
+        }.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+
+        var validAccountCount = await _db.Accounts.CountAsync(
+            a => systemAccountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry, ct);
+        if (validAccountCount != systemAccountIds.Count)
+        {
+            throw new InvalidOperationException(
+                "System accounts must be active posting accounts in the default ledger's chart of accounts.");
+        }
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (parameters is null)
+        {
+            parameters = new GeneralLedgerParameters(_org.OrganizationId, ledger.Id);
+            _db.GeneralLedgerParameters.Add(parameters);
+        }
+
+        parameters.Update(
+            ledger.Id,
+            req.DefaultFinancialDimensionSetId,
+            req.RetainedEarningsAccountId,
+            req.RoundingDifferenceAccountId,
+            req.RealizedGainAccountId,
+            req.RealizedLossAccountId,
+            req.UnrealizedGainAccountId,
+            req.UnrealizedLossAccountId,
+            req.AllowPostingToClosedPeriods,
+            req.RequireDimensionsOnJournalLines,
+            req.MaximumPennyDifference,
+            req.DefaultJournalType);
+
+        await _db.Ledgers.Where(l => l.IsDefault && l.Id != ledger.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false), ct);
+        ledger.SetDefault(true);
+        await _db.SaveChangesAsync(ct);
+
+        return ToParametersDto(
+            await ParametersQuery().SingleAsync(p => p.Id == parameters.Id, ct));
     }
 
     public async Task<FiscalCalendarDto> CreateFiscalCalendarAsync(
@@ -297,12 +489,16 @@ public class GeneralLedgerService : IGeneralLedgerService
         return types.Select(t => new AccountTypeDto(t.Id, t.Code, t.Name, t.Nature.ToString(), t.DisplayOrder));
     }
 
-    public async Task<IEnumerable<AccountDto>> GetAccountsAsync(CancellationToken ct = default)
+    public async Task<IEnumerable<AccountDto>> GetAccountsAsync(
+        Guid? chartOfAccountsId = null, CancellationToken ct = default)
     {
-        var accounts = await _db.Accounts
+        var query = _db.Accounts
             .Include(a => a.AccountType)
             .Include(a => a.ParentAccount)
-            .Where(a => !a.IsDeleted)
+            .Where(a => !a.IsDeleted);
+        if (chartOfAccountsId.HasValue)
+            query = query.Where(a => a.ChartOfAccountsId == chartOfAccountsId.Value);
+        var accounts = await query
             .OrderBy(a => a.AccountNumber)
             .ToListAsync(ct);
         return accounts.Select(ToAccountDto);
@@ -310,8 +506,15 @@ public class GeneralLedgerService : IGeneralLedgerService
 
     public async Task<AccountDto> CreateAccountAsync(CreateAccountRequest req, CancellationToken ct = default)
     {
+        var chart = await _db.ChartsOfAccounts.FirstOrDefaultAsync(
+            c => c.Id == req.ChartOfAccountsId && c.IsActive, ct)
+            ?? throw new InvalidOperationException("Chart of accounts not found or inactive.");
+        if (req.ParentAccountId.HasValue && !await _db.Accounts.AnyAsync(
+            a => a.Id == req.ParentAccountId && a.ChartOfAccountsId == chart.Id, ct))
+            throw new InvalidOperationException("Parent account must belong to the same chart of accounts.");
         var account = new Account(_org.OrganizationId, req.AccountNumber, req.Name, req.AccountTypeId,
-            req.IsHeaderAccount, req.ParentAccountId, req.Description, req.Currency);
+            req.IsHeaderAccount, req.ParentAccountId, req.Description, req.Currency,
+            chartOfAccountsId: chart.Id);
         _db.Accounts.Add(account);
         await _db.SaveChangesAsync(ct);
 
@@ -462,6 +665,7 @@ public class GeneralLedgerService : IGeneralLedgerService
     public async Task<IEnumerable<JournalEntryDto>> GetJournalEntriesAsync(Guid? fiscalPeriodId = null, CancellationToken ct = default)
     {
         var query = _db.JournalEntries
+            .Include(e => e.Ledger)
             .Include(e => e.FiscalPeriod)
             .Include(e => e.Lines).ThenInclude(l => l.Account)
             .Include(e => e.Lines).ThenInclude(l => l.FinancialDimensionSet)
@@ -480,6 +684,7 @@ public class GeneralLedgerService : IGeneralLedgerService
     public async Task<JournalEntryDto?> GetJournalEntryAsync(Guid id, CancellationToken ct = default)
     {
         var entry = await _db.JournalEntries
+            .Include(e => e.Ledger)
             .Include(e => e.FiscalPeriod)
             .Include(e => e.Lines).ThenInclude(l => l.Account)
             .Include(e => e.Lines).ThenInclude(l => l.FinancialDimensionSet)
@@ -492,14 +697,49 @@ public class GeneralLedgerService : IGeneralLedgerService
 
     public async Task<JournalEntryDto> CreateJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default)
     {
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.Id == req.LedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p => p.Id == req.FiscalPeriodId
+                && p.FiscalYear!.FiscalCalendarId == ledger.FiscalCalendarId, ct);
+        if (period is null)
+            throw new InvalidOperationException("The fiscal period does not belong to the ledger's fiscal calendar.");
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (period.Status != FiscalPeriodStatus.Open &&
+            parameters?.AllowPostingToClosedPeriods != true)
+            throw new InvalidOperationException(
+                "Journal entries can only be created in an open fiscal period.");
+
+        var accountIds = req.Lines?.Select(l => l.AccountId).Distinct().ToList() ?? [];
+        var matchingAccountCount = await _db.Accounts.CountAsync(
+            a => accountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active, ct);
+        if (matchingAccountCount != accountIds.Count)
+            throw new InvalidOperationException(
+                "All journal accounts must be active and belong to the ledger's chart of accounts.");
+
         var count = await _db.JournalEntries.CountAsync(ct) + 1;
         var entry = new JournalEntry(_org.OrganizationId, $"JE-{count:D6}", req.EntryDate, req.FiscalPeriodId,
-            req.Description, req.Reference, req.JournalType, req.Currency);
+            req.Description, req.Reference,
+            string.IsNullOrWhiteSpace(req.JournalType)
+                ? parameters?.DefaultJournalType ?? "General"
+                : req.JournalType,
+            ledger.FunctionalCurrency!.Code, ledger.Id);
 
         if (req.Lines != null)
         {
             foreach (var line in req.Lines)
             {
+                if (parameters?.RequireDimensionsOnJournalLines == true &&
+                    !line.FinancialDimensionSetId.HasValue)
+                    throw new InvalidOperationException(
+                        "A financial dimension set is required on every journal line.");
+
                 await ValidateDimensionSelectionAsync(
                     line.FinancialDimensionSetId,
                     line.FinancialDimensionValueIds,
@@ -514,6 +754,21 @@ public class GeneralLedgerService : IGeneralLedgerService
             }
         }
 
+        var difference = entry.TotalDebit - entry.TotalCredit;
+        if (difference != 0 &&
+            Math.Abs(difference) <= (parameters?.MaximumPennyDifference ?? 0))
+        {
+            if (parameters?.RoundingDifferenceAccountId is null)
+                throw new InvalidOperationException(
+                    "A rounding difference account is required to balance this journal.");
+
+            entry.AddLine(
+                parameters.RoundingDifferenceAccountId.Value,
+                "Automatic rounding difference",
+                difference < 0 ? Math.Abs(difference) : 0,
+                difference > 0 ? difference : 0);
+        }
+
         _db.JournalEntries.Add(entry);
         await _db.SaveChangesAsync(ct);
         return (await GetJournalEntryAsync(entry.Id, ct))!;
@@ -523,8 +778,14 @@ public class GeneralLedgerService : IGeneralLedgerService
     {
         var entry = await _db.JournalEntries
             .Include(e => e.Lines)
+            .Include(e => e.FiscalPeriod)
             .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
             ?? throw new InvalidOperationException("Journal entry not found.");
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (entry.FiscalPeriod?.Status != FiscalPeriodStatus.Open &&
+            parameters?.AllowPostingToClosedPeriods != true)
+            throw new InvalidOperationException(
+                "Journal entries can only be posted to an open fiscal period.");
         entry.Post();
         await _db.SaveChangesAsync(ct);
     }
@@ -626,7 +887,7 @@ public class GeneralLedgerService : IGeneralLedgerService
         if (oldBase is not null)
         {
             // old base keeps its data but loses IsBase — direct reflection since domain exposes internal
-            oldBase.UpdateExchangeRate(1m); // will throw if already base — won't reach here
+            oldBase.RemoveBaseStatus(1m);
         }
         // Use the internal method (same assembly via InternalsVisibleTo or just call SetAsBase)
         newBase.SetAsBase();
@@ -674,7 +935,7 @@ public class GeneralLedgerService : IGeneralLedgerService
         p.StartDate, p.EndDate, p.Status.ToString());
 
     private static AccountDto ToAccountDto(Account a) => new(
-        a.Id, a.AccountNumber, a.Name, a.Description,
+        a.Id, a.ChartOfAccountsId, a.AccountNumber, a.Name, a.Description,
         a.AccountTypeId, a.AccountType?.Name ?? string.Empty,
         a.ParentAccountId, a.ParentAccount?.Name,
         a.IsHeaderAccount, a.AllowManualEntry,
@@ -700,8 +961,55 @@ public class GeneralLedgerService : IGeneralLedgerService
         c.Id, c.Code, c.Name, c.Symbol, c.DecimalPlaces, c.ExchangeRate,
         c.IsBase, c.IsActive, c.NumericCode, c.Country, c.RateUpdatedAt, c.CreatedAt);
 
+    private static ChartOfAccountsDto ToChartOfAccountsDto(ChartOfAccounts chart) => new(
+        chart.Id, chart.Code, chart.Name, chart.Description,
+        chart.IsDefault, chart.IsActive, chart.Accounts.Count(a => !a.IsDeleted));
+
+    private static LedgerDto ToLedgerDto(Ledger ledger) => new(
+        ledger.Id, ledger.Code, ledger.Name, ledger.Description,
+        ledger.FunctionalCurrencyId, ledger.FunctionalCurrency?.Code ?? string.Empty,
+        ledger.ReportingCurrencyId, ledger.ReportingCurrency?.Code,
+        ledger.FiscalCalendarId, ledger.FiscalCalendar?.Name ?? string.Empty,
+        ledger.ChartOfAccountsId, ledger.ChartOfAccounts?.Name ?? string.Empty,
+        ledger.IsDefault, ledger.IsActive);
+
+    private IQueryable<GeneralLedgerParameters> ParametersQuery() =>
+        _db.GeneralLedgerParameters
+            .Include(p => p.DefaultLedger)
+            .Include(p => p.DefaultFinancialDimensionSet)
+            .Include(p => p.RetainedEarningsAccount)
+            .Include(p => p.RoundingDifferenceAccount)
+            .Include(p => p.RealizedGainAccount)
+            .Include(p => p.RealizedLossAccount)
+            .Include(p => p.UnrealizedGainAccount)
+            .Include(p => p.UnrealizedLossAccount);
+
+    private static GeneralLedgerParametersDto ToParametersDto(GeneralLedgerParameters p) => new(
+        p.Id,
+        p.DefaultLedgerId,
+        p.DefaultLedger?.Code ?? string.Empty,
+        p.DefaultFinancialDimensionSetId,
+        p.DefaultFinancialDimensionSet?.Name,
+        p.RetainedEarningsAccountId,
+        p.RetainedEarningsAccount?.AccountNumber,
+        p.RoundingDifferenceAccountId,
+        p.RoundingDifferenceAccount?.AccountNumber,
+        p.RealizedGainAccountId,
+        p.RealizedGainAccount?.AccountNumber,
+        p.RealizedLossAccountId,
+        p.RealizedLossAccount?.AccountNumber,
+        p.UnrealizedGainAccountId,
+        p.UnrealizedGainAccount?.AccountNumber,
+        p.UnrealizedLossAccountId,
+        p.UnrealizedLossAccount?.AccountNumber,
+        p.AllowPostingToClosedPeriods,
+        p.RequireDimensionsOnJournalLines,
+        p.MaximumPennyDifference,
+        p.DefaultJournalType);
+
     private static JournalEntryDto ToJournalEntryDto(JournalEntry e) => new(
-        e.Id, e.EntryNumber, e.EntryDate, e.FiscalPeriodId,
+        e.Id, e.LedgerId, e.Ledger?.Code ?? string.Empty,
+        e.EntryNumber, e.EntryDate, e.FiscalPeriodId,
         e.FiscalPeriod?.Name ?? string.Empty,
         e.Description, e.Reference, e.JournalType,
         e.Status.ToString(), e.Currency,

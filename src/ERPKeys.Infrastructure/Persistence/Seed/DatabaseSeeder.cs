@@ -17,9 +17,11 @@ public static class DatabaseSeeder
     {
         await SeedAccountTypesAsync(db, logger);
         var orgId = await SeedDefaultOrganizationAsync(db, logger);
-        await SeedChartOfAccountsAsync(db, logger, orgId);
-        await SeedFiscalYearAsync(db, logger, orgId);
         await SeedCurrenciesAsync(db, logger, orgId);
+        await SeedFiscalYearAsync(db, logger, orgId);
+        await SeedChartOfAccountsAsync(db, logger, orgId);
+        await SeedLedgerAsync(db, logger, orgId);
+        await SeedGeneralLedgerParametersAsync(db, logger, orgId);
         await SeedCatalogAsync(db, logger, orgId);   // Categories, Brands, Products, Variants, Inventory
         await SeedCustomersAsync(db, logger, orgId);
         await SeedVendorsAsync(db, logger, orgId);
@@ -108,6 +110,11 @@ public static class DatabaseSeeder
         if (await db.Accounts.IgnoreQueryFilters().AnyAsync(a => a.OrganizationId == orgId)) return;
         logger.LogInformation("Seeding chart of accounts...");
 
+        var chart = new ChartOfAccounts(
+            orgId, "CORP", "Corporate Chart of Accounts",
+            "Primary chart of accounts", true);
+        db.ChartsOfAccounts.Add(chart);
+
         var asset     = await db.AccountTypes.FirstAsync(t => t.Code == "ASSET");
         var liability = await db.AccountTypes.FirstAsync(t => t.Code == "LIABILITY");
         var equity    = await db.AccountTypes.FirstAsync(t => t.Code == "EQUITY");
@@ -116,38 +123,88 @@ public static class DatabaseSeeder
         var cogs      = await db.AccountTypes.FirstAsync(t => t.Code == "COGS");
 
         db.Accounts.AddRange(
-            new Account(orgId, "1000", "Assets",                    asset.Id,     true),
-            new Account(orgId, "1100", "Cash & Bank",               asset.Id,     true),
-            new Account(orgId, "1110", "Cash on Hand",              asset.Id,     false),
-            new Account(orgId, "1120", "Bank Account - Operating",  asset.Id,     false),
-            new Account(orgId, "1200", "Accounts Receivable",       asset.Id,     true),
-            new Account(orgId, "1210", "Trade Receivables",         asset.Id,     false),
-            new Account(orgId, "1300", "Inventory",                 asset.Id,     true),
-            new Account(orgId, "1310", "Finished Goods",            asset.Id,     false),
-            new Account(orgId, "1500", "Other Current Assets",      asset.Id,     true),
-            new Account(orgId, "1510", "Prepaid Expenses",          asset.Id,     false),
-            new Account(orgId, "2000", "Liabilities",               liability.Id, true),
-            new Account(orgId, "2100", "Accounts Payable",          liability.Id, true),
-            new Account(orgId, "2110", "Trade Payables",            liability.Id, false),
-            new Account(orgId, "2200", "Tax Liabilities",           liability.Id, true),
-            new Account(orgId, "2210", "Sales Tax Payable",         liability.Id, false),
-            new Account(orgId, "2300", "Other Current Liabilities", liability.Id, true),
-            new Account(orgId, "3000", "Equity",                    equity.Id,    true),
-            new Account(orgId, "3100", "Owner's Equity",            equity.Id,    false),
-            new Account(orgId, "3200", "Retained Earnings",         equity.Id,    false),
-            new Account(orgId, "4000", "Revenue",                   revenue.Id,   true),
-            new Account(orgId, "4100", "Sales Revenue",             revenue.Id,   false),
-            new Account(orgId, "4200", "Service Revenue",           revenue.Id,   false),
-            new Account(orgId, "4900", "Other Revenue",             revenue.Id,   false),
-            new Account(orgId, "5000", "Cost of Goods Sold",        cogs.Id,      true),
-            new Account(orgId, "5100", "COGS - Products",           cogs.Id,      false),
-            new Account(orgId, "6000", "Operating Expenses",        expense.Id,   true),
-            new Account(orgId, "6100", "Salaries & Wages",          expense.Id,   false),
-            new Account(orgId, "6200", "Rent & Utilities",          expense.Id,   false),
-            new Account(orgId, "6300", "Marketing & Advertising",   expense.Id,   false),
-            new Account(orgId, "6400", "General & Administrative",  expense.Id,   false),
-            new Account(orgId, "6900", "Other Expenses",            expense.Id,   false)
+            new Account(orgId, "1000", "Assets",                    asset.Id,     true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1100", "Cash & Bank",               asset.Id,     true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1110", "Cash on Hand",              asset.Id,     false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1120", "Bank Account - Operating",  asset.Id,     false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1200", "Accounts Receivable",       asset.Id,     true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1210", "Trade Receivables",         asset.Id,     false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1300", "Inventory",                 asset.Id,     true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1310", "Finished Goods",            asset.Id,     false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1500", "Other Current Assets",      asset.Id,     true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "1510", "Prepaid Expenses",          asset.Id,     false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2000", "Liabilities",               liability.Id, true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2100", "Accounts Payable",          liability.Id, true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2110", "Trade Payables",            liability.Id, false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2200", "Tax Liabilities",           liability.Id, true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2210", "Sales Tax Payable",         liability.Id, false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "2300", "Other Current Liabilities", liability.Id, true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "3000", "Equity",                    equity.Id,    true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "3100", "Owner's Equity",            equity.Id,    false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "3200", "Retained Earnings",         equity.Id,    false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "4000", "Revenue",                   revenue.Id,   true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "4100", "Sales Revenue",             revenue.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "4200", "Service Revenue",           revenue.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "4900", "Other Revenue",             revenue.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "5000", "Cost of Goods Sold",        cogs.Id,      true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "5100", "COGS - Products",           cogs.Id,      false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6000", "Operating Expenses",        expense.Id,   true, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6100", "Salaries & Wages",          expense.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6200", "Rent & Utilities",          expense.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6300", "Marketing & Advertising",   expense.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6400", "General & Administrative",  expense.Id,   false, chartOfAccountsId: chart.Id),
+            new Account(orgId, "6900", "Other Expenses",            expense.Id,   false, chartOfAccountsId: chart.Id)
         );
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedLedgerAsync(AppDbContext db, ILogger logger, Guid orgId)
+    {
+        if (await db.Ledgers.IgnoreQueryFilters().AnyAsync(l => l.OrganizationId == orgId)) return;
+
+        var currency = await db.Currencies.IgnoreQueryFilters()
+            .FirstAsync(c => c.OrganizationId == orgId && c.IsBase);
+        var calendar = await db.FiscalCalendars.IgnoreQueryFilters()
+            .FirstAsync(c => c.OrganizationId == orgId && c.IsDefault);
+        var chart = await db.ChartsOfAccounts.IgnoreQueryFilters()
+            .FirstAsync(c => c.OrganizationId == orgId && c.IsDefault);
+
+        logger.LogInformation("Seeding default ledger...");
+        db.Ledgers.Add(new Ledger(
+            orgId, "CORP", "Corporate Ledger",
+            currency.Id, calendar.Id, chart.Id,
+            "Primary accounting ledger", true));
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedGeneralLedgerParametersAsync(
+        AppDbContext db, ILogger logger, Guid orgId)
+    {
+        if (await db.GeneralLedgerParameters.IgnoreQueryFilters()
+            .AnyAsync(p => p.OrganizationId == orgId)) return;
+
+        var ledger = await db.Ledgers.IgnoreQueryFilters()
+            .FirstAsync(l => l.OrganizationId == orgId && l.IsDefault);
+        var accounts = await db.Accounts.IgnoreQueryFilters()
+            .Where(a => a.OrganizationId == orgId)
+            .ToDictionaryAsync(a => a.AccountNumber);
+
+        logger.LogInformation("Seeding general ledger parameters...");
+        var parameters = new GeneralLedgerParameters(orgId, ledger.Id);
+        parameters.Update(
+            ledger.Id,
+            null,
+            accounts.GetValueOrDefault("3200")?.Id,
+            accounts.GetValueOrDefault("6900")?.Id,
+            accounts.GetValueOrDefault("4900")?.Id,
+            accounts.GetValueOrDefault("6900")?.Id,
+            accounts.GetValueOrDefault("4900")?.Id,
+            accounts.GetValueOrDefault("6900")?.Id,
+            allowPostingToClosedPeriods: false,
+            requireDimensionsOnJournalLines: false,
+            maximumPennyDifference: 0.01m,
+            defaultJournalType: "General");
+        db.GeneralLedgerParameters.Add(parameters);
         await db.SaveChangesAsync();
     }
 

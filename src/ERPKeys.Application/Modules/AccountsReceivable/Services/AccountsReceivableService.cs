@@ -955,12 +955,15 @@ public class AccountsReceivableService : IAccountsReceivableService
         CancellationToken ct)
     {
         var date = entryDate.Date;
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.IsDefault && l.IsActive, ct)
+            ?? throw new InvalidOperationException("No active default ledger is configured.");
         var period = await _db.FiscalPeriods
             .Include(p => p.FiscalYear)
-                .ThenInclude(y => y!.FiscalCalendar)
             .FirstOrDefaultAsync(p =>
                 p.FiscalYear!.OrganizationId == organizationId &&
-                p.FiscalYear.FiscalCalendar!.IsDefault &&
+                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
                 p.FiscalYear.Status == FiscalYearStatus.Open &&
                 p.Status == FiscalPeriodStatus.Open &&
                 p.StartDate.Date <= date &&
@@ -976,7 +979,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             description,
             reference,
             journalType,
-            currency);
+            ledger.FunctionalCurrency?.Code ?? currency,
+            ledger.Id);
         _db.JournalEntries.Add(journal);
         return journal;
     }

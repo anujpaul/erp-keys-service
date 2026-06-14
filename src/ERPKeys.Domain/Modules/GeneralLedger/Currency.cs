@@ -109,4 +109,16 @@ public class Currency : BaseEntity
         IsActive     = true;
         SetUpdated();
     }
+
+    public void RemoveBaseStatus(decimal exchangeRate)
+    {
+        if (!IsBase) return;
+        if (exchangeRate <= 0)
+            throw new ArgumentException("Exchange rate must be positive.", nameof(exchangeRate));
+
+        IsBase = false;
+        ExchangeRate = exchangeRate;
+        RateUpdatedAt = DateTime.UtcNow;
+        SetUpdated();
+    }
 }

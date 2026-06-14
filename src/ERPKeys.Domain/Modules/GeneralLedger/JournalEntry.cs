@@ -7,6 +7,7 @@ public enum JournalEntryStatus { Draft, Posted, Voided }
 public class JournalEntry : BaseEntity
 {
     public Guid OrganizationId { get; private set; }
+    public Guid LedgerId { get; private set; }
     public string EntryNumber { get; private set; } = string.Empty;
     public DateTime EntryDate { get; private set; }
     public Guid FiscalPeriodId { get; private set; }
@@ -19,6 +20,7 @@ public class JournalEntry : BaseEntity
     public decimal TotalCredit { get; private set; }
 
     public FiscalPeriod? FiscalPeriod { get; private set; }
+    public Ledger? Ledger { get; private set; }
 
     private readonly List<JournalLine> _lines = new();
     public IReadOnlyCollection<JournalLine> Lines => _lines.AsReadOnly();
@@ -26,9 +28,11 @@ public class JournalEntry : BaseEntity
     private JournalEntry() { }
 
     public JournalEntry(Guid organizationId, string entryNumber, DateTime entryDate, Guid fiscalPeriodId,
-        string description, string reference, string journalType = "General", string currency = "USD")
+        string description, string reference, string journalType = "General", string currency = "USD",
+        Guid ledgerId = default)
     {
         OrganizationId = organizationId;
+        LedgerId = ledgerId;
         EntryNumber = entryNumber;
         EntryDate = entryDate;
         FiscalPeriodId = fiscalPeriodId;
