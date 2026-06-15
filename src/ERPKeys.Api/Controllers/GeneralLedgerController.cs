@@ -292,6 +292,18 @@ public class GeneralLedgerController : ControllerBase
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpPut("journal-entries/{id:guid}")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
+    public async Task<IActionResult> UpdateDraftJournalEntry(
+        Guid id,
+        [FromBody] CreateJournalEntryRequest req,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.UpdateDraftJournalEntryAsync(id, req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("journal-entries/{id:guid}/post")]
     [Authorize(Policy = PermissionKeys.GlJournalPost)]
     public async Task<IActionResult> PostJournalEntry(Guid id, CancellationToken ct)

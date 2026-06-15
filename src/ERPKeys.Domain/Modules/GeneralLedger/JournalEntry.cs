@@ -58,8 +58,40 @@ public class JournalEntry : BaseEntity
             throw new InvalidOperationException("A line cannot have both debit and credit amounts.");
 
         _lines.Add(new JournalLine(
-            Id, accountId, description, debit, credit, _lines.Count + 1,
+            Id, accountId, description, debit, credit,
+            _lines.Count(l => !l.IsDeleted) + 1,
             financialDimensionSetId, financialDimensionValueIds));
+        Recalc();
+        SetUpdated();
+    }
+
+    public void UpdateDraft(
+        Guid ledgerId,
+        DateTime entryDate,
+        Guid fiscalPeriodId,
+        string description,
+        string reference,
+        string journalType,
+        string currency)
+    {
+        if (Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Only a draft journal entry can be edited.");
+        if (ledgerId == Guid.Empty) throw new ArgumentException("Ledger is required.");
+        if (fiscalPeriodId == Guid.Empty) throw new ArgumentException("Fiscal period is required.");
+
+        LedgerId = ledgerId;
+        EntryDate = entryDate;
+        FiscalPeriodId = fiscalPeriodId;
+        Description = description?.Trim() ?? string.Empty;
+        Reference = reference?.Trim() ?? string.Empty;
+        JournalType = string.IsNullOrWhiteSpace(journalType) ? "General" : journalType.Trim();
+        Currency = currency.Trim().ToUpperInvariant();
+        foreach (var line in _lines.Where(l => !l.IsDeleted))
+        {
+            foreach (var dimensionValue in line.DimensionValues.Where(v => !v.IsDeleted))
+                dimensionValue.SoftDelete();
+            line.SoftDelete();
+        }
         Recalc();
         SetUpdated();
     }
@@ -68,7 +100,7 @@ public class JournalEntry : BaseEntity
     {
         if (Status != JournalEntryStatus.Draft)
             throw new InvalidOperationException("Only a draft entry can be posted.");
-        if (_lines.Count < 2)
+        if (_lines.Count(l => !l.IsDeleted) < 2)
             throw new InvalidOperationException("A journal entry must have at least two lines.");
         if (TotalDebit != TotalCredit)
             throw new InvalidOperationException($"Debits ({TotalDebit}) must equal credits ({TotalCredit}).");
@@ -87,7 +119,7 @@ public class JournalEntry : BaseEntity
 
     private void Recalc()
     {
-        TotalDebit = _lines.Sum(l => l.Debit);
-        TotalCredit = _lines.Sum(l => l.Credit);
+        TotalDebit = _lines.Where(l => !l.IsDeleted).Sum(l => l.Debit);
+        TotalCredit = _lines.Where(l => !l.IsDeleted).Sum(l => l.Credit);
     }
 }

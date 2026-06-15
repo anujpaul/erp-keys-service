@@ -54,6 +54,8 @@ public interface IGeneralLedgerService
     Task<JournalEntryDto?> GetJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task<JournalEntryDto> CreateJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
     Task<JournalEntryDto> CreateAndPostJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
+    Task<JournalEntryDto> UpdateDraftJournalEntryAsync(
+        Guid id, CreateJournalEntryRequest req, CancellationToken ct = default);
     Task PostJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task VoidJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task<IEnumerable<GeneralJournalVoucherTemplateDto>> GetVoucherTemplatesAsync(CancellationToken ct = default);
@@ -837,6 +839,95 @@ public class GeneralLedgerService : IGeneralLedgerService
         return (await GetJournalEntryAsync(entry.Id, ct))!;
     }
 
+    public async Task<JournalEntryDto> UpdateDraftJournalEntryAsync(
+        Guid id,
+        CreateJournalEntryRequest req,
+        CancellationToken ct = default)
+    {
+        var entry = await _db.JournalEntries
+            .Include(e => e.Lines)
+                .ThenInclude(l => l.DimensionValues)
+            .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Journal entry not found.");
+        if (entry.Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Only a draft journal entry can be edited.");
+
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.Id == req.LedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p => p.Id == req.FiscalPeriodId
+                && p.FiscalYear!.FiscalCalendarId == ledger.FiscalCalendarId, ct)
+            ?? throw new InvalidOperationException(
+                "The fiscal period does not belong to the ledger's fiscal calendar.");
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (period.Status != FiscalPeriodStatus.Open &&
+            parameters?.AllowPostingToClosedPeriods != true)
+            throw new InvalidOperationException(
+                "Journal entries can only be edited in an open fiscal period.");
+
+        var accountIds = req.Lines?.Select(l => l.AccountId).Distinct().ToList() ?? [];
+        var matchingAccountCount = await _db.Accounts.CountAsync(
+            a => accountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry, ct);
+        if (matchingAccountCount != accountIds.Count)
+            throw new InvalidOperationException(
+                "All journal accounts must be active posting accounts in the ledger's chart of accounts.");
+
+        entry.UpdateDraft(
+            ledger.Id,
+            req.EntryDate,
+            period.Id,
+            req.Description,
+            req.Reference,
+            string.IsNullOrWhiteSpace(req.JournalType)
+                ? parameters?.DefaultJournalType ?? "General"
+                : req.JournalType,
+            ledger.FunctionalCurrency!.Code);
+
+        foreach (var line in req.Lines ?? [])
+        {
+            if (parameters?.RequireDimensionsOnJournalLines == true &&
+                !line.FinancialDimensionSetId.HasValue)
+                throw new InvalidOperationException(
+                    "A financial dimension set is required on every journal line.");
+            await ValidateDimensionSelectionAsync(
+                line.FinancialDimensionSetId,
+                line.FinancialDimensionValueIds,
+                ct);
+            entry.AddLine(
+                line.AccountId,
+                line.Description,
+                line.Debit,
+                line.Credit,
+                line.FinancialDimensionSetId,
+                line.FinancialDimensionValueIds);
+        }
+
+        var difference = entry.TotalDebit - entry.TotalCredit;
+        if (difference != 0 &&
+            Math.Abs(difference) <= (parameters?.MaximumPennyDifference ?? 0))
+        {
+            if (parameters?.RoundingDifferenceAccountId is null)
+                throw new InvalidOperationException(
+                    "A rounding difference account is required to balance this journal.");
+            entry.AddLine(
+                parameters.RoundingDifferenceAccountId.Value,
+                "Automatic rounding difference",
+                difference < 0 ? Math.Abs(difference) : 0,
+                difference > 0 ? difference : 0);
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return (await GetJournalEntryAsync(entry.Id, ct))!;
+    }
+
     public async Task<IEnumerable<GeneralJournalVoucherTemplateDto>> GetVoucherTemplatesAsync(
         CancellationToken ct = default)
     {
@@ -1472,7 +1563,7 @@ public class GeneralLedgerService : IGeneralLedgerService
         e.Description, e.Reference, e.JournalType,
         e.Status.ToString(), e.Currency,
         e.TotalDebit, e.TotalCredit, e.CreatedAt,
-        e.Lines.OrderBy(l => l.LineOrder).Select(l => new JournalLineDto(
+        e.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.LineOrder).Select(l => new JournalLineDto(
             l.Id, l.AccountId,
             l.Account?.AccountNumber ?? string.Empty,
             l.Account?.Name ?? string.Empty,
@@ -1480,7 +1571,8 @@ public class GeneralLedgerService : IGeneralLedgerService
             l.FinancialDimensionSetId,
             l.FinancialDimensionSet?.Name,
             l.DimensionValues
-                .Where(dv => dv.FinancialDimensionValue?.FinancialDimension is not null)
+                .Where(dv => !dv.IsDeleted
+                    && dv.FinancialDimensionValue?.FinancialDimension is not null)
                 .OrderBy(dv => dv.FinancialDimensionValue!.FinancialDimension!.Name)
                 .Select(dv => new JournalLineDimensionDto(
                     dv.FinancialDimensionValue!.FinancialDimensionId,
