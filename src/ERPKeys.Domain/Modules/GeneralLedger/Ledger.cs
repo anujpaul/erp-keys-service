@@ -52,4 +52,24 @@ public class Ledger : BaseEntity
         IsDefault = isDefault;
         SetUpdated();
     }
+
+    public void Configure(
+        string name,
+        Guid functionalCurrencyId,
+        Guid fiscalCalendarId,
+        Guid chartOfAccountsId)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Ledger name is required.");
+        if (functionalCurrencyId == Guid.Empty) throw new ArgumentException("Functional currency is required.");
+        if (fiscalCalendarId == Guid.Empty) throw new ArgumentException("Fiscal calendar is required.");
+        if (chartOfAccountsId == Guid.Empty) throw new ArgumentException("Chart of accounts is required.");
+        if (ReportingCurrencyId == functionalCurrencyId)
+            throw new ArgumentException("Functional currency must differ from reporting currency.");
+
+        Name = name.Trim();
+        FunctionalCurrencyId = functionalCurrencyId;
+        FiscalCalendarId = fiscalCalendarId;
+        ChartOfAccountsId = chartOfAccountsId;
+        SetUpdated();
+    }
 }

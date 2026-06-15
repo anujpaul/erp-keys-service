@@ -30,16 +30,23 @@ public class Account : BaseEntity
         string? description = null, string currency = "USD", int level = 1,
         Guid chartOfAccountsId = default)
     {
+        if (organizationId == Guid.Empty) throw new ArgumentException("Organization is required.");
+        if (chartOfAccountsId == Guid.Empty) throw new ArgumentException("Chart of accounts is required.");
+        if (string.IsNullOrWhiteSpace(accountNumber)) throw new ArgumentException("Account number is required.");
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Account name is required.");
+        if (accountTypeId == Guid.Empty) throw new ArgumentException("Account type is required.");
+        if (level < 1) throw new ArgumentException("Account level must be at least one.");
+
         OrganizationId = organizationId;
         ChartOfAccountsId = chartOfAccountsId;
-        AccountNumber = accountNumber;
-        Name = name;
+        AccountNumber = accountNumber.Trim();
+        Name = name.Trim();
         AccountTypeId = accountTypeId;
         IsHeaderAccount = isHeaderAccount;
         AllowManualEntry = !isHeaderAccount;
         ParentAccountId = parentAccountId;
-        Description = description;
-        Currency = currency;
+        Description = description?.Trim();
+        Currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
         Level = level;
     }
 

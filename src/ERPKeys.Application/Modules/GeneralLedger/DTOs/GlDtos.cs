@@ -46,6 +46,7 @@ public record GeneralLedgerParametersDto(
     string FiscalCalendarName,
     Guid ChartOfAccountsId,
     string ChartOfAccountsName,
+    Guid FunctionalCurrencyId,
     string FunctionalCurrencyCode,
     Guid? DefaultFinancialDimensionSetId,
     string? DefaultFinancialDimensionSetName,
@@ -68,6 +69,10 @@ public record GeneralLedgerParametersDto(
 
 public record UpdateGeneralLedgerParametersRequest(
     Guid DefaultLedgerId,
+    string LedgerName,
+    Guid FiscalCalendarId,
+    Guid FunctionalCurrencyId,
+    Guid ChartOfAccountsId,
     Guid? DefaultFinancialDimensionSetId,
     Guid? RetainedEarningsAccountId,
     Guid? RoundingDifferenceAccountId,

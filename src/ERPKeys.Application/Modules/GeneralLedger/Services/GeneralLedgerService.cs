@@ -174,7 +174,6 @@ public class GeneralLedgerService : IGeneralLedgerService
         var chart = await _db.ChartsOfAccounts.FirstOrDefaultAsync(
             c => c.Id == req.ChartOfAccountsId && c.IsActive, ct)
             ?? throw new InvalidOperationException("Chart of accounts not found or inactive.");
-
         var makeDefault = req.IsDefault || !await _db.Ledgers.AnyAsync(ct);
         if (makeDefault)
             await _db.Ledgers.Where(l => l.IsDefault)
@@ -232,7 +231,16 @@ public class GeneralLedgerService : IGeneralLedgerService
     {
         var ledger = await _db.Ledgers.FirstOrDefaultAsync(
             l => l.Id == req.DefaultLedgerId && l.IsActive, ct)
-            ?? throw new InvalidOperationException("Default ledger not found or inactive.");
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+
+        if (!await _db.FiscalCalendars.AnyAsync(c => c.Id == req.FiscalCalendarId, ct))
+            throw new InvalidOperationException("Fiscal calendar not found.");
+        if (!await _db.Currencies.AnyAsync(
+            c => c.Id == req.FunctionalCurrencyId && c.IsActive, ct))
+            throw new InvalidOperationException("Functional currency not found or inactive.");
+        if (!await _db.ChartsOfAccounts.AnyAsync(
+            c => c.Id == req.ChartOfAccountsId && c.IsActive, ct))
+            throw new InvalidOperationException("Chart of accounts not found or inactive.");
 
         if (req.DefaultFinancialDimensionSetId.HasValue &&
             !await _db.FinancialDimensionSets.AnyAsync(
@@ -254,15 +262,21 @@ public class GeneralLedgerService : IGeneralLedgerService
 
         var validAccountCount = await _db.Accounts.CountAsync(
             a => systemAccountIds.Contains(a.Id)
-                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.ChartOfAccountsId == req.ChartOfAccountsId
                 && a.Status == AccountStatus.Active
                 && !a.IsHeaderAccount
                 && a.AllowManualEntry, ct);
         if (validAccountCount != systemAccountIds.Count)
         {
             throw new InvalidOperationException(
-                "System accounts must be active posting accounts in the default ledger's chart of accounts.");
+                "System accounts must be active posting accounts in the ledger's chart of accounts.");
         }
+
+        ledger.Configure(
+            req.LedgerName,
+            req.FunctionalCurrencyId,
+            req.FiscalCalendarId,
+            req.ChartOfAccountsId);
 
         var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
         if (parameters is null)
@@ -528,11 +542,27 @@ public class GeneralLedgerService : IGeneralLedgerService
         var chart = await _db.ChartsOfAccounts.FirstOrDefaultAsync(
             c => c.Id == req.ChartOfAccountsId && c.IsActive, ct)
             ?? throw new InvalidOperationException("Chart of accounts not found or inactive.");
-        if (req.ParentAccountId.HasValue && !await _db.Accounts.AnyAsync(
-            a => a.Id == req.ParentAccountId && a.ChartOfAccountsId == chart.Id, ct))
-            throw new InvalidOperationException("Parent account must belong to the same chart of accounts.");
+        if (!await _db.AccountTypes.AnyAsync(t => t.Id == req.AccountTypeId, ct))
+            throw new InvalidOperationException("Account type not found.");
+        Account? parentAccount = null;
+        if (req.ParentAccountId.HasValue)
+        {
+            parentAccount = await _db.Accounts.FirstOrDefaultAsync(
+                a => a.Id == req.ParentAccountId &&
+                    a.ChartOfAccountsId == chart.Id &&
+                    a.IsHeaderAccount &&
+                    a.Status == AccountStatus.Active, ct)
+                ?? throw new InvalidOperationException(
+                    "Parent account must be an active header account in the same chart of accounts.");
+        }
+        if (await _db.Accounts.AnyAsync(
+            a => a.ChartOfAccountsId == chart.Id &&
+                a.AccountNumber == req.AccountNumber.Trim(), ct))
+            throw new InvalidOperationException(
+                $"Account number '{req.AccountNumber.Trim()}' already exists in '{chart.Name}'.");
         var account = new Account(_org.OrganizationId, req.AccountNumber, req.Name, req.AccountTypeId,
             req.IsHeaderAccount, req.ParentAccountId, req.Description, req.Currency,
+            level: parentAccount is null ? 1 : parentAccount.Level + 1,
             chartOfAccountsId: chart.Id);
         _db.Accounts.Add(account);
         await _db.SaveChangesAsync(ct);
@@ -1302,6 +1332,7 @@ public class GeneralLedgerService : IGeneralLedgerService
         p.DefaultLedger?.FiscalCalendar?.Name ?? string.Empty,
         p.DefaultLedger?.ChartOfAccountsId ?? Guid.Empty,
         p.DefaultLedger?.ChartOfAccounts?.Name ?? string.Empty,
+        p.DefaultLedger?.FunctionalCurrencyId ?? Guid.Empty,
         p.DefaultLedger?.FunctionalCurrency?.Code ?? string.Empty,
         p.DefaultFinancialDimensionSetId,
         p.DefaultFinancialDimensionSet?.Name,

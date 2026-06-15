@@ -21,6 +21,7 @@ public class GeneralLedgerController : ControllerBase
         => Ok(await _svc.GetChartsOfAccountsAsync(ct));
 
     [HttpPost("charts-of-accounts")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
     public async Task<IActionResult> CreateChartOfAccounts(
         [FromBody] CreateChartOfAccountsRequest req, CancellationToken ct)
     {
@@ -175,13 +176,16 @@ public class GeneralLedgerController : ControllerBase
         => Ok(await _svc.GetAccountsAsync(chartOfAccountsId, ct));
 
     [HttpPost("accounts")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
     public async Task<IActionResult> CreateAccount([FromBody] CreateAccountRequest req, CancellationToken ct)
     {
         try { return StatusCode(201, await _svc.CreateAccountAsync(req, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpPost("accounts/{id:guid}/deactivate")]
+    [Authorize(Policy = PermissionKeys.GlJournalManage)]
     public async Task<IActionResult> DeactivateAccount(Guid id, CancellationToken ct)
     {
         try { await _svc.DeactivateAccountAsync(id, ct); return NoContent(); }
