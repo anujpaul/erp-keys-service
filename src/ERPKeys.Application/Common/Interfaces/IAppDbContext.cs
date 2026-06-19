@@ -13,6 +13,7 @@ using ERPKeys.Domain.Modules.Workflow;
 using ERPKeys.Domain.Modules.Expenses;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ERPKeys.Application.Common.Interfaces;
 
@@ -150,5 +151,6 @@ public interface IAppDbContext
     DbSet<AssetTransfer>     AssetTransfers     { get; }
     DbSet<AssetMaintenance>  AssetMaintenances  { get; }
 
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

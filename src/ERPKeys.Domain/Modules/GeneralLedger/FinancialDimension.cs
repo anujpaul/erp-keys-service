@@ -137,7 +137,7 @@ public class JournalLineDimensionValue : BaseEntity
 
     private JournalLineDimensionValue() { }
 
-    internal JournalLineDimensionValue(Guid journalLineId, Guid financialDimensionValueId)
+    public JournalLineDimensionValue(Guid journalLineId, Guid financialDimensionValueId)
     {
         JournalLineId = journalLineId;
         FinancialDimensionValueId = financialDimensionValueId;

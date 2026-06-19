@@ -257,7 +257,29 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseExceptionHandler("/error");
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            var exception = context.Features
+                .Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()
+                ?.Error;
+            var logger = context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("GlobalExceptionHandler");
+
+            if (exception is not null)
+                logger.LogError(exception, "Unhandled exception while processing {Method} {Path}.",
+                    context.Request.Method, context.Request.Path);
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "An unexpected server error occurred.",
+                traceId = context.TraceIdentifier
+            });
+        });
+    });
     app.UseHsts();
 }
 

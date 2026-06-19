@@ -14,6 +14,7 @@ using ERPKeys.Domain.Modules.CashBank;
 using ERPKeys.Domain.Modules.FixedAssets;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PMProduct = ERPKeys.Domain.Modules.ProductManagement.Product;
 
 namespace ERPKeys.Infrastructure.Persistence;
@@ -382,6 +383,9 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.Entity<AssetMaintenance>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
     }
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => Database.BeginTransactionAsync(cancellationToken);
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

@@ -117,7 +117,7 @@ public class JournalEntry : BaseEntity
         SetUpdated();
     }
 
-    private void Recalc()
+    public void Recalc()
     {
         TotalDebit = _lines.Where(l => !l.IsDeleted).Sum(l => l.Debit);
         TotalCredit = _lines.Where(l => !l.IsDeleted).Sum(l => l.Credit);

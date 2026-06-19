@@ -2,6 +2,7 @@ using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Modules.GeneralLedger.DTOs;
 using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace ERPKeys.Application.Modules.GeneralLedger.Services;
@@ -89,15 +90,19 @@ public class GeneralLedgerService : IGeneralLedgerService
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
     private readonly ICurrentUserService _user;
+    private readonly ILogger<GeneralLedgerService> _logger;
 
     public GeneralLedgerService(
         IAppDbContext db,
         ICurrentOrganizationService org,
-        ICurrentUserService user)
+        ICurrentUserService user,
+        ILogger<GeneralLedgerService> logger
+        )
     {
         _db = db;
         _org = org;
         _user = user;
+        _logger = logger;
     }
 
     // ── Fiscal Calendar ───────────────────────────────────────────────────────
@@ -838,17 +843,21 @@ public class GeneralLedgerService : IGeneralLedgerService
         await _db.SaveChangesAsync(ct);
         return (await GetJournalEntryAsync(entry.Id, ct))!;
     }
-
-    public async Task<JournalEntryDto> UpdateDraftJournalEntryAsync(
+    public async Task<JournalEntryDto> UpdateDraftJournalEntryAsync_old(
         Guid id,
         CreateJournalEntryRequest req,
         CancellationToken ct = default)
     {
+
+        _logger.LogInformation("Updating Journal Entry");
+
         var entry = await _db.JournalEntries
+            .AsNoTracking()
             .Include(e => e.Lines)
                 .ThenInclude(l => l.DimensionValues)
             .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
             ?? throw new InvalidOperationException("Journal entry not found.");
+        
         if (entry.Status != JournalEntryStatus.Draft)
             throw new InvalidOperationException("Only a draft journal entry can be edited.");
 
@@ -856,6 +865,7 @@ public class GeneralLedgerService : IGeneralLedgerService
             .Include(l => l.FunctionalCurrency)
             .FirstOrDefaultAsync(l => l.Id == req.LedgerId && l.IsActive, ct)
             ?? throw new InvalidOperationException("Ledger not found or inactive.");
+
         var period = await _db.FiscalPeriods
             .Include(p => p.FiscalYear)
             .FirstOrDefaultAsync(p => p.Id == req.FiscalPeriodId
@@ -870,6 +880,149 @@ public class GeneralLedgerService : IGeneralLedgerService
                 "Journal entries can only be edited in an open fiscal period.");
 
         var accountIds = req.Lines?.Select(l => l.AccountId).Distinct().ToList() ?? [];
+
+        var matchingAccountCount = await _db.Accounts.CountAsync(
+            a => accountIds.Contains(a.Id)
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry, ct);
+                
+        if (matchingAccountCount != accountIds.Count)
+            throw new InvalidOperationException(
+                "All journal accounts must be active posting accounts in the ledger's chart of accounts.");
+
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
+        var now = DateTime.UtcNow;
+
+        try
+        {
+            
+            var existingLines = entry.Lines.ToList();
+
+            // await _db.JournalLineDimensionValues
+            //     .Where(v => !v.IsDeleted &&
+            //         _db.JournalLines.Any(l => l.Id == v.JournalLineId
+            //             && l.JournalEntryId == entry.Id
+            //             && !l.IsDeleted))
+            //     .ExecuteUpdateAsync(setters => setters
+            //         .SetProperty(v => v.IsDeleted, true)
+            //         .SetProperty(v => v.UpdatedAt, now), ct);
+        
+            // await _db.JournalLines
+            //     .Where(l => l.JournalEntryId == entry.Id && !l.IsDeleted)
+            //     .ExecuteUpdateAsync(setters => setters
+            //         .SetProperty(l => l.IsDeleted, true)
+            //         .SetProperty(l => l.UpdatedAt, now), ct);
+
+            foreach (var line in existingLines)
+            {
+                line.SoftDelete();
+                line.SetUpdated();
+
+                foreach(var dim in line.DimensionValues.ToList())
+                {
+                    dim.SoftDelete();
+                    dim.SetUpdated();
+                }
+            }
+
+            entry.UpdateDraft(
+                ledger.Id,
+                req.EntryDate,
+                period.Id,
+                req.Description,
+                req.Reference,
+                string.IsNullOrWhiteSpace(req.JournalType)
+                    ? parameters?.DefaultJournalType ?? "General"
+                    : req.JournalType,
+                ledger.FunctionalCurrency!.Code);
+
+            foreach (var line in req.Lines ?? [])
+            {
+                if (parameters?.RequireDimensionsOnJournalLines == true &&
+                    !line.FinancialDimensionSetId.HasValue)
+                    throw new InvalidOperationException(
+                        "A financial dimension set is required on every journal line.");
+                await ValidateDimensionSelectionAsync(
+                    line.FinancialDimensionSetId,
+                    line.FinancialDimensionValueIds,
+                    ct);
+                entry.AddLine(
+                    line.AccountId,
+                    line.Description,
+                    line.Debit,
+                    line.Credit,
+                    line.FinancialDimensionSetId,
+                    line.FinancialDimensionValueIds);
+            }
+
+            entry.Recalc();
+
+            var difference = entry.TotalDebit - entry.TotalCredit;
+            if (difference != 0 &&
+                Math.Abs(difference) >= (parameters?.MaximumPennyDifference ?? 0))
+            {
+                if (parameters?.RoundingDifferenceAccountId is null)
+                    throw new InvalidOperationException(
+                        "A rounding difference account is required to balance this journal.");
+                entry.AddLine(
+                    parameters.RoundingDifferenceAccountId.Value,
+                    "Automatic rounding difference",
+                    difference < 0 ? Math.Abs(difference) : 0,
+                    difference > 0 ? difference : 0);
+            }
+
+            await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return (await GetJournalEntryAsync(entry.Id, ct))!;
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    public async Task<JournalEntryDto> UpdateDraftJournalEntryAsync(
+    Guid id,
+    CreateJournalEntryRequest req,
+    CancellationToken ct = default)
+    {
+        _logger.LogInformation("Updating draft journal entry {EntryId} for user {UserId}", id, _user.UserId);
+
+        // Load the entry WITHOUT tracking first to avoid concurrency issues
+        var entry = await _db.JournalEntries
+            .AsNoTracking()  // Important: Don't track the entity yet
+            .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Journal entry not found.");
+
+        // Validate status
+        if (entry.Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Only a draft journal entry can be edited.");
+
+        // Load validation data
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.Id == req.LedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Ledger not found or inactive.");
+
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p => p.Id == req.FiscalPeriodId
+                && p.FiscalYear!.FiscalCalendarId == ledger.FiscalCalendarId, ct)
+            ?? throw new InvalidOperationException(
+                "The fiscal period does not belong to the ledger's fiscal calendar.");
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (period.Status != FiscalPeriodStatus.Open &&
+            parameters?.AllowPostingToClosedPeriods != true)
+            throw new InvalidOperationException(
+                "Journal entries can only be edited in an open fiscal period.");
+
+        // Validate accounts
+        var accountIds = req.Lines?.Select(l => l.AccountId).Distinct().ToList() ?? [];
         var matchingAccountCount = await _db.Accounts.CountAsync(
             a => accountIds.Contains(a.Id)
                 && a.ChartOfAccountsId == ledger.ChartOfAccountsId
@@ -880,52 +1033,151 @@ public class GeneralLedgerService : IGeneralLedgerService
             throw new InvalidOperationException(
                 "All journal accounts must be active posting accounts in the ledger's chart of accounts.");
 
-        entry.UpdateDraft(
-            ledger.Id,
-            req.EntryDate,
-            period.Id,
-            req.Description,
-            req.Reference,
-            string.IsNullOrWhiteSpace(req.JournalType)
-                ? parameters?.DefaultJournalType ?? "General"
-                : req.JournalType,
-            ledger.FunctionalCurrency!.Code);
+        await using var transaction = await _db.BeginTransactionAsync(ct);
 
-        foreach (var line in req.Lines ?? [])
+        try
         {
-            if (parameters?.RequireDimensionsOnJournalLines == true &&
-                !line.FinancialDimensionSetId.HasValue)
-                throw new InvalidOperationException(
-                    "A financial dimension set is required on every journal line.");
-            await ValidateDimensionSelectionAsync(
-                line.FinancialDimensionSetId,
-                line.FinancialDimensionValueIds,
-                ct);
-            entry.AddLine(
-                line.AccountId,
-                line.Description,
-                line.Debit,
-                line.Credit,
-                line.FinancialDimensionSetId,
-                line.FinancialDimensionValueIds);
-        }
+            // STEP 1: Delete existing lines and dimension values using raw SQL or ExecuteDelete
+            // This avoids EF Core change tracking issues entirely
 
-        var difference = entry.TotalDebit - entry.TotalCredit;
-        if (difference != 0 &&
-            Math.Abs(difference) <= (parameters?.MaximumPennyDifference ?? 0))
+            // First, get the line IDs to delete dimension values
+            var lineIds = await _db.JournalLines
+                .Where(l => l.JournalEntryId == entry.Id && !l.IsDeleted)
+                .Select(l => l.Id)
+                .ToListAsync(ct);
+
+            if (lineIds.Any())
+            {
+                // Delete dimension values using ExecuteDelete (bulk delete)
+                await _db.JournalLineDimensionValues
+                    .Where(v => lineIds.Contains(v.JournalLineId) && !v.IsDeleted)
+                    .ExecuteDeleteAsync(ct);
+            }
+
+            // Delete journal lines using ExecuteDelete
+            var linesDeleted = await _db.JournalLines
+                .Where(l => l.JournalEntryId == entry.Id && !l.IsDeleted)
+                .ExecuteDeleteAsync(ct);
+
+            _logger.LogDebug("Deleted {LineCount} existing lines for entry {EntryId}", linesDeleted, entry.Id);
+
+            // STEP 2: Now update the JournalEntry - but we need to attach it properly
+            // Re-attach the entry with the original values to avoid concurrency issues
+            _db.JournalEntries.Attach(entry);
+
+            // Tell EF Core that only specific properties have changed
+            entry.UpdateDraft(
+                ledger.Id,
+                req.EntryDate,
+                period.Id,
+                req.Description,
+                req.Reference,
+                string.IsNullOrWhiteSpace(req.JournalType)
+                    ? parameters?.DefaultJournalType ?? "General"
+                    : req.JournalType,
+                ledger.FunctionalCurrency!.Code);
+
+            // Mark the entry as modified (this will update all changed properties)
+            //_db.Entry(entry).State = EntityState.Modified;
+
+            // STEP 3: Add new lines
+            var lineOrder = 0;
+            foreach (var line in req.Lines ?? [])
+            {
+                if (parameters?.RequireDimensionsOnJournalLines == true &&
+                    !line.FinancialDimensionSetId.HasValue)
+                    throw new InvalidOperationException(
+                        "A financial dimension set is required on every journal line.");
+
+                await ValidateDimensionSelectionAsync(
+                    line.FinancialDimensionSetId,
+                    line.FinancialDimensionValueIds,
+                    ct);
+
+                // Create and add the line
+                var journalLine = new JournalLine(
+                    entry.Id,
+                    line.AccountId,
+                    line.Description,
+                    line.Debit,
+                    line.Credit,
+                    lineOrder++,
+                    line.FinancialDimensionSetId);
+
+                _db.JournalLines.Add(journalLine);
+
+                // Add dimension values if any
+                if (line.FinancialDimensionValueIds?.Any() == true)
+                {
+                   foreach (var valueId in line.FinancialDimensionValueIds)
+                   {
+                       var dimValue = new JournalLineDimensionValue(
+                           journalLine.Id,
+                           valueId);
+                       _db.JournalLineDimensionValues.Add(dimValue);
+                   }
+                }
+            }
+
+            // STEP 4: Handle rounding difference
+            // Recalculate totals from the lines we just added
+            var totalDebit = req.Lines?.Sum(l => l.Debit) ?? 0;
+            var totalCredit = req.Lines?.Sum(l => l.Credit) ?? 0;
+            var difference = totalDebit - totalCredit;
+
+            if (difference != 0 &&
+                Math.Abs(difference) <= (parameters?.MaximumPennyDifference ?? 0))
+            {
+                if (parameters?.RoundingDifferenceAccountId is null)
+                    throw new InvalidOperationException(
+                        "A rounding difference account is required to balance this journal.");
+
+                var roundingLine = new JournalLine(
+                    entry.Id,
+                    parameters.RoundingDifferenceAccountId.Value,
+                    "Automatic rounding difference",
+                    difference < 0 ? Math.Abs(difference) : 0,
+                    difference > 0 ? difference : 0,
+                    lineOrder++,
+                    null);
+
+                _db.JournalLines.Add(roundingLine);
+            }
+
+            // STEP 5: Save all changes
+            await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            _logger.LogInformation(
+                "Successfully updated draft journal entry {EntryId} with {LineCount} lines",
+                entry.Id, req.Lines?.Count ?? 0);
+
+            return (await GetJournalEntryAsync(entry.Id, ct))!;
+        }
+        catch (DbUpdateConcurrencyException ex)
         {
-            if (parameters?.RoundingDifferenceAccountId is null)
-                throw new InvalidOperationException(
-                    "A rounding difference account is required to balance this journal.");
-            entry.AddLine(
-                parameters.RoundingDifferenceAccountId.Value,
-                "Automatic rounding difference",
-                difference < 0 ? Math.Abs(difference) : 0,
-                difference > 0 ? difference : 0);
-        }
+            await transaction.RollbackAsync(ct);
+            _logger.LogError(ex, "Concurrency conflict updating draft journal entry {EntryId}", id);
 
-        await _db.SaveChangesAsync(ct);
-        return (await GetJournalEntryAsync(entry.Id, ct))!;
+            // Reload and try once more
+            var entryReloaded = await _db.JournalEntries
+                .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct);
+
+            if (entryReloaded != null)
+            {
+                _logger.LogWarning("Entry {EntryId} was modified by another user. Please refresh and try again.", id);
+                throw new InvalidOperationException(
+                    "This journal entry was modified by another user. Please refresh and try again.");
+            }
+
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(ct);
+            _logger.LogError(ex, "Failed to update draft journal entry {EntryId}", id);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<GeneralJournalVoucherTemplateDto>> GetVoucherTemplatesAsync(
