@@ -1458,13 +1458,59 @@ public class GeneralLedgerService : IGeneralLedgerService
             .Include(e => e.FiscalPeriod)
             .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
             ?? throw new InvalidOperationException("Journal entry not found.");
+        
         var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+
+        var totalDebit = entry.Lines?.Sum(l => l.Debit) ?? 0;
+        var totalCredit = entry.Lines?.Sum(l => l.Credit) ?? 0;
+
+        var difference = totalDebit - totalCredit;
+
+
+
+        if (difference != 0)
+        {
+            if (Math.Abs(difference) <= (parameters?.MaximumPennyDifference ?? 0))
+            {
+                if (parameters?.RoundingDifferenceAccountId is null)
+                    throw new InvalidOperationException(
+                        "A rounding difference account is required to balance this journal.");
+                entry.AddLine(
+                    parameters.RoundingDifferenceAccountId.Value,
+                    "Automatic rounding difference",
+                    difference < 0 ? Math.Abs(difference) : 0,
+                    difference > 0 ? difference : 0);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                        "Credit and Debit totals should match for posting.");
+                
+            }
+        }
+
         if (entry.FiscalPeriod?.Status != FiscalPeriodStatus.Open &&
             parameters?.AllowPostingToClosedPeriods != true)
             throw new InvalidOperationException(
                 "Journal entries can only be posted to an open fiscal period.");
+                
         entry.Post();
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            foreach (var conflicted in ex.Entries)
+                await conflicted.ReloadAsync(ct);
+
+            // Re-check the entry's current state after reload
+            if (entry.Status == JournalEntryStatus.Posted)
+                return; // someone else already posted it — treat as success
+
+            throw new InvalidOperationException(
+                "This journal entry was modified by another user. Please refresh and try again.");
+        }
     }
 
     public async Task VoidJournalEntryAsync(Guid id, CancellationToken ct = default)
