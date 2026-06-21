@@ -34,6 +34,7 @@ public interface IAccountsReceivableService
 
     // AR Invoices
     Task<IEnumerable<ARInvoiceDto>> GetInvoicesAsync(Guid? customerId = null, CancellationToken ct = default);
+    Task<ARInvoicePostingDto> GetInvoicePostingAsync(Guid id, CancellationToken ct = default);
     Task<ARInvoiceDto> CreateInvoiceAsync(CreateARInvoiceRequest req, CancellationToken ct = default);
     Task<ARInvoiceDto> GenerateInvoiceFromOrderAsync(Guid salesOrderId, CancellationToken ct = default);
     Task IssueInvoiceAsync(Guid id, CancellationToken ct = default);
@@ -479,6 +480,55 @@ public class AccountsReceivableService : IAccountsReceivableService
         return list.Select(ToARInvoiceDto);
     }
 
+    public async Task<ARInvoicePostingDto> GetInvoicePostingAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var invoice = await _db.ARInvoices
+            .Include(i => i.SalesOrder)
+            .FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Invoice not found.");
+
+        if (invoice.JournalEntryId.HasValue)
+        {
+            var journal = await _db.JournalEntries
+                .Include(e => e.Ledger)
+                .Include(e => e.FiscalPeriod)
+                .Include(e => e.Lines).ThenInclude(l => l.Account)
+                .FirstOrDefaultAsync(e => e.Id == invoice.JournalEntryId.Value && !e.IsDeleted, ct)
+                ?? throw new InvalidOperationException("Invoice journal entry not found.");
+
+            return ToInvoicePostingDto(invoice, journal);
+        }
+
+        var postingContext = await LoadJournalPostingContextAsync(
+            invoice.InvoiceDate, invoice.OrganizationId, ct);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { "1210", "4100", "2210" },
+            invoice.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
+        var lines = BuildInvoicePostingLines(invoice, accounts);
+
+        return new ARInvoicePostingDto(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            invoice.Status.ToString(),
+            invoice.Status == ARInvoiceStatus.Draft && !invoice.IsSubmittedForApproval,
+            invoice.IsSubmittedForApproval ? "PendingApproval" : "ReadyToPost",
+            null,
+            null,
+            null,
+            invoice.InvoiceDate.Date,
+            postingContext.Ledger.Id,
+            postingContext.Ledger.Code,
+            postingContext.Period.Id,
+            postingContext.Period.Name,
+            postingContext.Ledger.FunctionalCurrency?.Code ?? invoice.SalesOrder?.Currency ?? "USD",
+            lines.Sum(l => l.Debit),
+            lines.Sum(l => l.Credit),
+            lines);
+    }
+
     public async Task<ARInvoiceDto> CreateInvoiceAsync(CreateARInvoiceRequest req, CancellationToken ct = default)
     {
         var count = await _db.ARInvoices.CountAsync(ct) + 1;
@@ -884,7 +934,13 @@ public class AccountsReceivableService : IAccountsReceivableService
         if (invoice.JournalEntryId.HasValue)
             throw new InvalidOperationException("This invoice has already been posted to the general ledger.");
 
-        var accounts = await LoadPostingAccountsAsync(new[] { "1210", "4100", "2210" }, ct);
+        var postingContext = await LoadJournalPostingContextAsync(
+            invoice.InvoiceDate, invoice.OrganizationId, ct);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { "1210", "4100", "2210" },
+            invoice.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
         var journal = await CreateJournalAsync(
             invoice.InvoiceDate,
             $"Customer invoice {invoice.InvoiceNumber}",
@@ -892,24 +948,62 @@ public class AccountsReceivableService : IAccountsReceivableService
             "Sales",
             invoice.OrganizationId,
             invoice.SalesOrder?.Currency ?? "USD",
+            postingContext,
             ct);
 
-        journal.AddLine(accounts["1210"].Id, $"Trade receivable - {invoice.InvoiceNumber}",
-            invoice.TotalAmount, 0m);
-        journal.AddLine(accounts["4100"].Id, $"Sales revenue - {invoice.InvoiceNumber}",
-            0m, invoice.SubTotal - invoice.DiscountAmount);
-        if (invoice.TaxAmount > 0)
-            journal.AddLine(accounts["2210"].Id, $"Sales tax payable - {invoice.InvoiceNumber}",
-                0m, invoice.TaxAmount);
+        foreach (var line in BuildInvoicePostingLines(invoice, accounts))
+            journal.AddLine(line.AccountId, line.Description, line.Debit, line.Credit);
         journal.Post();
         return journal;
+    }
+
+    private static IReadOnlyList<ARInvoicePostingLineDto> BuildInvoicePostingLines(
+        ARInvoice invoice,
+        IReadOnlyDictionary<string, Account> accounts)
+    {
+        var lines = new List<ARInvoicePostingLineDto>
+        {
+            new(
+                accounts["1210"].Id,
+                accounts["1210"].AccountNumber,
+                accounts["1210"].Name,
+                $"Trade receivable - {invoice.InvoiceNumber}",
+                invoice.TotalAmount,
+                0m),
+            new(
+                accounts["4100"].Id,
+                accounts["4100"].AccountNumber,
+                accounts["4100"].Name,
+                $"Sales revenue - {invoice.InvoiceNumber}",
+                0m,
+                invoice.SubTotal - invoice.DiscountAmount)
+        };
+
+        if (invoice.TaxAmount > 0)
+        {
+            lines.Add(new ARInvoicePostingLineDto(
+                accounts["2210"].Id,
+                accounts["2210"].AccountNumber,
+                accounts["2210"].Name,
+                $"Sales tax payable - {invoice.InvoiceNumber}",
+                0m,
+                invoice.TaxAmount));
+        }
+
+        return lines;
     }
 
     private async Task<JournalEntry> CreatePaymentJournalAsync(
         ARPayment payment, ARInvoice invoice, CancellationToken ct)
     {
         var cashAccountNumber = payment.PaymentMethod == PaymentMethod.Cash ? "1110" : "1120";
-        var accounts = await LoadPostingAccountsAsync(new[] { cashAccountNumber, "1210" }, ct);
+        var postingContext = await LoadJournalPostingContextAsync(
+            payment.PaymentDate, payment.OrganizationId, ct);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { cashAccountNumber, "1210" },
+            payment.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
         var journal = await CreateJournalAsync(
             payment.PaymentDate,
             $"Customer receipt {payment.PaymentNumber}",
@@ -917,6 +1011,7 @@ public class AccountsReceivableService : IAccountsReceivableService
             "CashReceipt",
             payment.OrganizationId,
             invoice.SalesOrder?.Currency ?? "USD",
+            postingContext,
             ct);
 
         journal.AddLine(accounts[cashAccountNumber].Id, $"Receipt for {invoice.InvoiceNumber}",
@@ -930,7 +1025,13 @@ public class AccountsReceivableService : IAccountsReceivableService
     private async Task CreateShipmentJournalAsync(
         SalesOrder order, DateTime shipDate, decimal shipmentCost, CancellationToken ct)
     {
-        var accounts = await LoadPostingAccountsAsync(new[] { "5100", "1310" }, ct);
+        var postingContext = await LoadJournalPostingContextAsync(
+            shipDate, order.OrganizationId, ct);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { "5100", "1310" },
+            order.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
         var journal = await CreateJournalAsync(
             shipDate,
             $"Cost of goods sold for {order.OrderNumber}",
@@ -938,6 +1039,7 @@ public class AccountsReceivableService : IAccountsReceivableService
             "Inventory",
             order.OrganizationId,
             order.Currency,
+            postingContext,
             ct);
 
         journal.AddLine(accounts["5100"].Id, $"COGS - {order.OrderNumber}", shipmentCost, 0m);
@@ -952,29 +1054,19 @@ public class AccountsReceivableService : IAccountsReceivableService
         string journalType,
         Guid organizationId,
         string currency,
+        (Ledger Ledger, FiscalPeriod Period)? postingContext,
         CancellationToken ct)
     {
-        var date = entryDate.Date;
-        var ledger = await _db.Ledgers
-            .Include(l => l.FunctionalCurrency)
-            .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.IsDefault && l.IsActive, ct)
-            ?? throw new InvalidOperationException("No active default ledger is configured.");
-        var period = await _db.FiscalPeriods
-            .Include(p => p.FiscalYear)
-            .FirstOrDefaultAsync(p =>
-                p.FiscalYear!.OrganizationId == organizationId &&
-                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
-                p.FiscalYear.Status == FiscalYearStatus.Open &&
-                p.Status == FiscalPeriodStatus.Open &&
-                p.StartDate.Date <= date &&
-                p.EndDate.Date >= date, ct)
-            ?? throw new InvalidOperationException($"No open fiscal period exists for {date:d}.");
+        var context = postingContext
+            ?? await LoadJournalPostingContextAsync(entryDate, organizationId, ct);
+        var ledger = context.Ledger;
+        var period = context.Period;
 
         var count = await _db.JournalEntries.CountAsync(ct) + 1;
         var journal = new JournalEntry(
             organizationId,
             $"JE-{count:D6}",
-            date,
+            entryDate.Date,
             period.Id,
             description,
             reference,
@@ -985,13 +1077,45 @@ public class AccountsReceivableService : IAccountsReceivableService
         return journal;
     }
 
+    private async Task<(Ledger Ledger, FiscalPeriod Period)> LoadJournalPostingContextAsync(
+        DateTime entryDate,
+        Guid organizationId,
+        CancellationToken ct)
+    {
+        var date = entryDate.Date;
+        var parameters = await _db.GeneralLedgerParameters
+            .Include(p => p.DefaultLedger)
+                .ThenInclude(l => l!.FunctionalCurrency)
+            .FirstOrDefaultAsync(p => p.OrganizationId == organizationId, ct)
+            ?? throw new InvalidOperationException("General ledger parameters are not configured.");
+        var ledger = parameters.DefaultLedger;
+        if (ledger is null || !ledger.IsActive || ledger.OrganizationId != organizationId)
+            throw new InvalidOperationException(
+                "The ledger selected in General Ledger Parameters is missing or inactive.");
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p =>
+                p.FiscalYear!.OrganizationId == organizationId &&
+                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
+                p.FiscalYear.Status == FiscalYearStatus.Open &&
+                p.Status == FiscalPeriodStatus.Open &&
+                p.StartDate.Date <= date &&
+                p.EndDate.Date >= date, ct)
+            ?? throw new InvalidOperationException($"No open fiscal period exists for {date:d}.");
+        return (ledger, period);
+    }
+
     private async Task<Dictionary<string, Account>> LoadPostingAccountsAsync(
-        IEnumerable<string> accountNumbers, CancellationToken ct)
+        IEnumerable<string> accountNumbers,
+        Guid organizationId,
+        Guid chartOfAccountsId,
+        CancellationToken ct)
     {
         var numbers = accountNumbers.Distinct().ToList();
         var accounts = await _db.Accounts
             .Where(a =>
-                a.OrganizationId == _org.OrganizationId &&
+                a.OrganizationId == organizationId &&
+                a.ChartOfAccountsId == chartOfAccountsId &&
                 numbers.Contains(a.AccountNumber) &&
                 !a.IsHeaderAccount &&
                 a.Status == AccountStatus.Active &&
@@ -1001,7 +1125,8 @@ public class AccountsReceivableService : IAccountsReceivableService
         var missing = numbers.Where(n => !accounts.ContainsKey(n)).ToList();
         if (missing.Count > 0)
             throw new InvalidOperationException(
-                $"Required posting account(s) not found or inactive: {string.Join(", ", missing)}.");
+                $"Required posting account(s) are not configured in the selected ledger's chart of accounts: " +
+                $"{string.Join(", ", missing)}.");
 
         return accounts;
     }
@@ -1027,7 +1152,44 @@ public class AccountsReceivableService : IAccountsReceivableService
             i.SubTotal, i.TaxAmount, i.DiscountAmount, i.TotalAmount,
             i.PaidAmount, i.OutstandingAmount, i.Status.ToString(),
             i.DaysOutstanding, i.CreatedAt,
-            i.WorkflowInstanceId, i.IsSubmittedForApproval);
+            i.WorkflowInstanceId, i.IsSubmittedForApproval,
+            i.JournalEntryId);
+
+    private static ARInvoicePostingDto ToInvoicePostingDto(
+        ARInvoice invoice,
+        JournalEntry journal)
+    {
+        var lines = journal.Lines
+            .Where(l => !l.IsDeleted)
+            .OrderBy(l => l.LineOrder)
+            .Select(l => new ARInvoicePostingLineDto(
+                l.AccountId,
+                l.Account?.AccountNumber ?? string.Empty,
+                l.Account?.Name ?? string.Empty,
+                l.Description,
+                l.Debit,
+                l.Credit))
+            .ToList();
+
+        return new ARInvoicePostingDto(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            invoice.Status.ToString(),
+            false,
+            journal.Status == JournalEntryStatus.Voided ? "Voided" : "Posted",
+            journal.Id,
+            journal.EntryNumber,
+            journal.Status.ToString(),
+            journal.EntryDate,
+            journal.LedgerId,
+            journal.Ledger?.Code ?? string.Empty,
+            journal.FiscalPeriodId,
+            journal.FiscalPeriod?.Name ?? string.Empty,
+            journal.Currency,
+            journal.TotalDebit,
+            journal.TotalCredit,
+            lines);
+    }
 
     private static SalesOrderDto ToSalesOrderDto(SalesOrder o) =>
         new(o.Id, o.OrderNumber, o.CustomerId, o.Customer?.Name ?? string.Empty,

@@ -64,12 +64,13 @@ public static class DatabaseSeeder
         if (await db.AccountTypes.AnyAsync()) return;
         logger.LogInformation("Seeding account types...");
         db.AccountTypes.AddRange(
-            new AccountType("ASSET",     "Asset",              AccountNature.Debit,  1),
-            new AccountType("LIABILITY", "Liability",          AccountNature.Credit, 2),
-            new AccountType("EQUITY",    "Equity",             AccountNature.Credit, 3),
-            new AccountType("REVENUE",   "Revenue",            AccountNature.Credit, 4),
-            new AccountType("EXPENSE",   "Expense",            AccountNature.Debit,  5),
-            new AccountType("COGS",      "Cost of Goods Sold", AccountNature.Debit,  6)
+            new AccountType("ASSET",            "Asset",                AccountNature.Debit,  1),
+            new AccountType("LIABILITY",        "Liability",            AccountNature.Credit, 2),
+            new AccountType("EQUITY",           "Equity",               AccountNature.Credit, 3),
+            new AccountType("REVENUE",          "Revenue",              AccountNature.Credit, 4),
+            new AccountType("EXPENSE",          "Expense",              AccountNature.Debit,  5),
+            new AccountType("COGS",             "Cost of Goods Sold",   AccountNature.Debit,  6),
+            new AccountType("PROFIT AND LOSS",  "Profit and loss",      AccountNature.Debit,  7)
         );
         await db.SaveChangesAsync();
     }

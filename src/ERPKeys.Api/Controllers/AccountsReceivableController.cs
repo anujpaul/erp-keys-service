@@ -143,6 +143,14 @@ public class AccountsReceivableController : ControllerBase
     public async Task<IActionResult> GetInvoices([FromQuery] Guid? customerId, CancellationToken ct)
         => Ok(await _svc.GetInvoicesAsync(customerId, ct));
 
+    [HttpGet("invoices/{id:guid}/posting")]
+    [Authorize(Policy = PermissionKeys.ArInvoiceView)]
+    public async Task<IActionResult> GetInvoicePosting(Guid id, CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetInvoicePostingAsync(id, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("invoices")]
     [Authorize(Policy = PermissionKeys.ArInvoiceManage)]
     public async Task<IActionResult> CreateInvoice([FromBody] CreateARInvoiceRequest req, CancellationToken ct)

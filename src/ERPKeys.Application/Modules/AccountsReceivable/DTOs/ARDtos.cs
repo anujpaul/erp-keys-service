@@ -110,7 +110,21 @@ public record ARInvoiceDto(Guid Id, string InvoiceNumber, Guid CustomerId,
     decimal SubTotal, decimal TaxAmount, decimal DiscountAmount, decimal TotalAmount,
     decimal PaidAmount, decimal OutstandingAmount, string Status,
     int DaysOutstanding, DateTime CreatedAt,
-    Guid? WorkflowInstanceId = null, bool IsSubmittedForApproval = false);
+    Guid? WorkflowInstanceId = null, bool IsSubmittedForApproval = false,
+    Guid? JournalEntryId = null);
+
+public record ARInvoicePostingLineDto(
+    Guid AccountId, string AccountNumber, string AccountName,
+    string Description, decimal Debit, decimal Credit);
+
+public record ARInvoicePostingDto(
+    Guid InvoiceId, string InvoiceNumber, string InvoiceStatus,
+    bool CanPost, string PostingStatus,
+    Guid? JournalEntryId, string? JournalEntryNumber, string? JournalStatus,
+    DateTime EntryDate, Guid LedgerId, string LedgerCode,
+    Guid FiscalPeriodId, string FiscalPeriodName, string Currency,
+    decimal TotalDebit, decimal TotalCredit,
+    IReadOnlyList<ARInvoicePostingLineDto> Lines);
 
 public record CreateARInvoiceRequest(
     Guid CustomerId, DateTime InvoiceDate, DateTime DueDate,
