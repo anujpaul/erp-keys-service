@@ -7,6 +7,7 @@ public enum UserStatus { Active, Inactive, Locked }
 public class AppUser : BaseEntity
 {
     public Guid OrganizationId { get; private set; }
+    public Guid? PreferredOrganizationId { get; private set; }
     public string Username     { get; private set; } = string.Empty;
     public string Email        { get; private set; } = string.Empty;
     public string FullName     { get; private set; } = string.Empty;
@@ -40,6 +41,12 @@ public class AppUser : BaseEntity
     }
 
     public void SetPasswordHash(string hash) { PasswordHash = hash; SetUpdated(); }
+
+    public void SetPreferredOrganization(Guid organizationId)
+    {
+        PreferredOrganizationId = organizationId;
+        SetUpdated();
+    }
 
     public void RecordLogin()
     {

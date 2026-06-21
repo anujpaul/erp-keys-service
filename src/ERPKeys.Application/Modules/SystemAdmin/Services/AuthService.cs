@@ -51,7 +51,8 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
 
         return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
-            new UserDto(user.Id, user.OrganizationId, user.Username, user.Email, user.FullName,
+            new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
+                user.Username, user.Email, user.FullName,
                 user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt));
     }
 
@@ -74,7 +75,8 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
 
         return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
-            new UserDto(user.Id, user.OrganizationId, user.Username, user.Email, user.FullName,
+            new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
+                user.Username, user.Email, user.FullName,
                 user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt));
     }
 
@@ -97,6 +99,39 @@ public class AuthService : IAuthService
 
         user.SetPasswordHash(_hasher.Hash(req.NewPassword));
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<UserDto> SetPreferredOrganizationAsync(
+        Guid userId,
+        SetPreferredOrganizationRequest req,
+        CancellationToken ct = default)
+    {
+        var user = await _db.AppUsers.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException("User not found.");
+
+        var (roles, storedPermissions) = await LoadAuthorizationAsync(user.Id, ct);
+        var hasAllOrganizationAccess = roles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
+        if (!hasAllOrganizationAccess && req.OrganizationId != user.OrganizationId)
+            throw new InvalidOperationException(
+                "You do not have access to the selected organization and cannot make it your default.");
+
+        var organizationExists = await _db.Organizations
+            .AnyAsync(o => o.Id == req.OrganizationId &&
+                           !o.IsDeleted &&
+                           o.Status == ERPKeys.Domain.Modules.Organization.OrganizationStatus.Active, ct);
+        if (!organizationExists)
+            throw new InvalidOperationException("The selected organization is not active or no longer exists.");
+
+        user.SetPreferredOrganization(req.OrganizationId);
+        _db.AuditLogs.Add(new AuditLogEntry(req.OrganizationId, user.Id, user.Username,
+            "Auth", "SetPreferredOrganization", req.OrganizationId.ToString(), "Organization"));
+        await _db.SaveChangesAsync(ct);
+
+        var permissions = PermissionCatalog.ExpandForRoles(storedPermissions, roles).Order().ToList();
+
+        return new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
+            user.Username, user.Email, user.FullName, user.Status.ToString(),
+            user.LastLoginAt, roles, permissions, user.CreatedAt);
     }
 
     private async Task<(List<string> Roles, List<string> Permissions)> LoadAuthorizationAsync(

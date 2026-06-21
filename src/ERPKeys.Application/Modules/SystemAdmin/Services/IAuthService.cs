@@ -8,4 +8,8 @@ public interface IAuthService
     Task<LoginResponse> RefreshAsync(RefreshTokenRequest req, string? ipAddress, CancellationToken ct = default);
     Task LogoutAsync(Guid userId, CancellationToken ct = default);
     Task ChangePasswordAsync(Guid userId, ChangePasswordRequest req, CancellationToken ct = default);
+    Task<UserDto> SetPreferredOrganizationAsync(
+        Guid userId,
+        SetPreferredOrganizationRequest req,
+        CancellationToken ct = default);
 }

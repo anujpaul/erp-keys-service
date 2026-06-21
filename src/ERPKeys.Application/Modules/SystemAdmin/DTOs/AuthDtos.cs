@@ -13,7 +13,7 @@ public record RefreshTokenRequest(string RefreshToken);
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 public record UserDto(
-    Guid Id, Guid OrganizationId,
+    Guid Id, Guid OrganizationId, Guid? PreferredOrganizationId,
     string Username, string Email, string FullName,
     string Status, DateTime? LastLoginAt,
     IReadOnlyList<string> Roles,
@@ -29,6 +29,8 @@ public record UpdateUserRequest(string Email, string FullName, IList<Guid> RoleI
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 public record ResetPasswordRequest(Guid UserId, string NewPassword);
+
+public record SetPreferredOrganizationRequest(Guid OrganizationId);
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
 public record RoleDto(

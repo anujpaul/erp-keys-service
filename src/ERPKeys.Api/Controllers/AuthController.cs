@@ -78,6 +78,26 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Set the organization selected automatically when this user signs in.</summary>
+    [HttpPut("preferred-organization")]
+    [Authorize]
+    public async Task<IActionResult> SetPreferredOrganization(
+        [FromBody] SetPreferredOrganizationRequest req,
+        CancellationToken ct)
+    {
+        try
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                 ?? User.FindFirstValue("sub")
+                                 ?? throw new InvalidOperationException("User ID claim missing."));
+            return Ok(await _auth.SetPreferredOrganizationAsync(userId, req, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Get the currently authenticated user's profile.</summary>
     [HttpGet("me")]
     [Authorize]

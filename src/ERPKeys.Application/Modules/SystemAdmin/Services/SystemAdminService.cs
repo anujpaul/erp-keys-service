@@ -222,7 +222,7 @@ public class SystemAdminService : ISystemAdminService
         ?? throw new InvalidOperationException("User not found.");
 
     private static UserDto ToUserDto(AppUser u) => new(
-        u.Id, u.OrganizationId, u.Username, u.Email, u.FullName,
+        u.Id, u.OrganizationId, u.PreferredOrganizationId, u.Username, u.Email, u.FullName,
         u.Status.ToString(), u.LastLoginAt,
         u.UserRoles.Where(r => r.Role != null).Select(r => r.Role!.Name).ToList(),
         PermissionCatalog.ExpandForRoles(u.UserRoles

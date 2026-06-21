@@ -8,7 +8,10 @@ namespace ERPKeys.Application.Modules.Organization.Services;
 
 public interface IOrganizationService
 {
-    Task<IEnumerable<OrganizationDto>> GetAllAsync(CancellationToken ct = default);
+    Task<IEnumerable<OrganizationDto>> GetAccessibleAsync(
+        Guid assignedOrganizationId,
+        bool hasAllOrganizationAccess,
+        CancellationToken ct = default);
     Task<OrganizationDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<OrganizationDto> CreateAsync(CreateOrganizationRequest req, CancellationToken ct = default);
     Task UpdateAsync(Guid id, UpdateOrganizationRequest req, CancellationToken ct = default);
@@ -23,10 +26,20 @@ public class OrganizationService : IOrganizationService
 
     public OrganizationService(IAppDbContext db) => _db = db;
 
-    public async Task<IEnumerable<OrganizationDto>> GetAllAsync(CancellationToken ct = default)
+    public async Task<IEnumerable<OrganizationDto>> GetAccessibleAsync(
+        Guid assignedOrganizationId,
+        bool hasAllOrganizationAccess,
+        CancellationToken ct = default)
     {
-        var orgs = await _db.Organizations
-            .Where(o => !o.IsDeleted)
+        var query = _db.Organizations.Where(o => !o.IsDeleted);
+        if (!hasAllOrganizationAccess)
+        {
+            query = query.Where(o =>
+                o.Id == assignedOrganizationId &&
+                o.Status == OrganizationStatus.Active);
+        }
+
+        var orgs = await query
             .OrderBy(o => o.Name)
             .ToListAsync(ct);
 

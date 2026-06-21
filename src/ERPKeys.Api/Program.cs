@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Security.Claims;
 using Microsoft.OpenApi.Models;
 
 
@@ -284,6 +285,58 @@ else
 }
 
 app.UseAuthentication();
+
+// Enforce organization access on every organization-scoped request. Admin users
+// may work in any active organization; other users are restricted to the
+// organization assigned to their account.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true &&
+        context.Request.Headers.TryGetValue("X-Organization-Id", out var organizationHeader))
+    {
+        if (!Guid.TryParse(organizationHeader.FirstOrDefault(), out var requestedOrganizationId))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { error = "The selected organization is invalid." });
+            return;
+        }
+
+        var assignedOrganizationId = Guid.TryParse(
+            context.User.FindFirstValue("orgId"), out var assignedId)
+            ? assignedId
+            : Guid.Empty;
+        var hasAllOrganizationAccess = context.User.IsInRole("Admin");
+
+        if (!hasAllOrganizationAccess && requestedOrganizationId != assignedOrganizationId)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "You do not have access to the selected organization."
+            });
+            return;
+        }
+
+        var db = context.RequestServices.GetRequiredService<AppDbContext>();
+        var organizationIsActive = await db.Organizations
+            .AnyAsync(o => o.Id == requestedOrganizationId &&
+                           !o.IsDeleted &&
+                           o.Status == ERPKeys.Domain.Modules.Organization.OrganizationStatus.Active,
+                context.RequestAborted);
+        if (!organizationIsActive)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "The selected organization is inactive or no longer available."
+            });
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new
 {

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using ERPKeys.Application.Modules.Organization.DTOs;
 using ERPKeys.Application.Modules.Organization.Services;
 using ERPKeys.Application.Common.Security;
@@ -17,7 +18,17 @@ public class OrganizationsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _svc.GetAllAsync(ct));
+    {
+        var assignedOrganizationId = Guid.Parse(
+            User.FindFirstValue("orgId")
+            ?? throw new InvalidOperationException("Organization claim missing."));
+        var hasAllOrganizationAccess = User.IsInRole("Admin");
+
+        return Ok(await _svc.GetAccessibleAsync(
+            assignedOrganizationId,
+            hasAllOrganizationAccess,
+            ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)

@@ -11,6 +11,11 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         b.ToTable("app_users");
         b.HasKey(e => e.Id);
         b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.PreferredOrganizationId);
+        b.HasOne<ERPKeys.Domain.Modules.Organization.Organization>()
+            .WithMany()
+            .HasForeignKey(e => e.PreferredOrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.Property(e => e.Username).HasMaxLength(100).IsRequired();
         b.Property(e => e.Email).HasMaxLength(200).IsRequired();
         b.Property(e => e.FullName).HasMaxLength(200).IsRequired();

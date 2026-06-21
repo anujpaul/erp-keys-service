@@ -4,6 +4,7 @@ using ERPKeys.Domain.Common;
 using ERPKeys.Application.Modules.AccountsPayable.DTOs;
 using ERPKeys.Application.Modules.InventoryManagement.Services;
 using ERPKeys.Domain.Modules.AccountsPayable;
+using ERPKeys.Domain.Modules.GeneralLedger;
 using ERPKeys.Domain.Modules.ProductManagement;
 using Microsoft.EntityFrameworkCore;
 
@@ -576,6 +577,8 @@ public class AccountsPayableService : IAccountsPayableService
         var inv = await _db.APInvoices.FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
         inv.Approve();
+        var journal = await CreateInvoiceJournalAsync(inv, ct);
+        inv.SetJournalEntry(journal.Id);
         await _db.SaveChangesAsync(ct);
     }
 
@@ -583,6 +586,18 @@ public class AccountsPayableService : IAccountsPayableService
     {
         var inv = await _db.APInvoices.FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
+        if (inv.PaidAmount > 0 || inv.PrepaymentApplied > 0)
+            throw new InvalidOperationException(
+                "An invoice with applied payments or prepayments cannot be voided.");
+
+        if (inv.JournalEntryId.HasValue)
+        {
+            var journal = await _db.JournalEntries
+                .FirstOrDefaultAsync(j => j.Id == inv.JournalEntryId.Value, ct)
+                ?? throw new InvalidOperationException("The invoice's General Ledger journal was not found.");
+            journal.Void();
+        }
+
         inv.Void();
         await _db.SaveChangesAsync(ct);
     }
@@ -607,6 +622,7 @@ public class AccountsPayableService : IAccountsPayableService
     {
         var invoice = await _db.APInvoices.FirstOrDefaultAsync(i => i.Id == req.APInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
+        ValidatePayment(invoice, req.VendorId, req.Amount);
 
         var count = await _db.APPayments.CountAsync(ct) + 1;
         var payment = new APPayment(_org.OrganizationId, $"PAY-{count:D6}", req.VendorId, req.APInvoiceId,
@@ -614,7 +630,8 @@ public class AccountsPayableService : IAccountsPayableService
 
         invoice.ApplyPayment(req.Amount);
         _db.APPayments.Add(payment);
-        payment.Post();
+        var journal = await CreatePaymentJournalAsync(payment, invoice.InvoiceNumber, ct);
+        payment.Post(journal.Id);
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.APPayments
@@ -1125,6 +1142,8 @@ public class AccountsPayableService : IAccountsPayableService
             .FirstOrDefaultAsync(i => i.WorkflowInstanceId == workflowInstanceId, ct)
             ?? throw new InvalidOperationException("No invoice linked to this workflow instance.");
         inv.WorkflowApproved();
+        var journal = await CreateInvoiceJournalAsync(inv, ct);
+        inv.SetJournalEntry(journal.Id);
         await _db.SaveChangesAsync(ct);
     }
 
@@ -1210,25 +1229,233 @@ public class AccountsPayableService : IAccountsPayableService
             ?? throw new InvalidOperationException("Proposal not found.");
 
         var payCount = await _db.APPayments.CountAsync(ct);
+        var journalCount = await _db.JournalEntries.CountAsync(ct);
+        var postingContext = await LoadJournalPostingContextAsync(
+            proposal.PaymentDate, proposal.OrganizationId, ct);
+        var settlementAccountNumber = GetSettlementAccountNumber(proposal.PaymentMethod);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { "2110", settlementAccountNumber },
+            proposal.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
+
         foreach (var line in proposal.Lines.Where(l => l.APPaymentId is null))
         {
             payCount++;
             var inv = await _db.APInvoices.FindAsync(new object[] { line.APInvoiceId }, ct)
                 ?? throw new InvalidOperationException($"Invoice {line.APInvoiceId} not found.");
+            ValidatePayment(inv, line.VendorId, line.ProposedAmount);
 
             var payment = new APPayment(_org.OrganizationId, $"PMT-{DateTime.UtcNow:yyyy}-{payCount:D6}",
                 line.VendorId, line.APInvoiceId, proposal.PaymentDate, line.ProposedAmount,
                 proposal.PaymentMethod, proposal.BankAccount);
             _db.APPayments.Add(payment);
-            await _db.SaveChangesAsync(ct);
 
             inv.ApplyPayment(line.ProposedAmount);
+            journalCount++;
+            var journal = CreatePaymentJournal(
+                payment,
+                inv.InvoiceNumber,
+                postingContext,
+                accounts,
+                journalCount);
+            payment.Post(journal.Id);
             line.SetPayment(payment.Id);
         }
 
         proposal.MarkProcessed(processedBy);
         await _db.SaveChangesAsync(ct);
         return ToProposalDto(proposal);
+    }
+
+    private async Task<JournalEntry> CreateInvoiceJournalAsync(
+        APInvoice invoice,
+        CancellationToken ct)
+    {
+        if (invoice.JournalEntryId.HasValue)
+            throw new InvalidOperationException("This AP invoice already has a General Ledger journal.");
+
+        var postingContext = await LoadJournalPostingContextAsync(
+            invoice.InvoiceDate, invoice.OrganizationId, ct);
+        var debitAccountNumber = invoice.InvoiceType == APInvoiceType.Prepayment
+            ? "1510"
+            : invoice.PurchaseOrderId.HasValue ? "1310" : "6900";
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { debitAccountNumber, "2110" },
+            invoice.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
+        var journalCount = await _db.JournalEntries.CountAsync(ct) + 1;
+        var journal = CreateJournal(
+            invoice.OrganizationId,
+            journalCount,
+            invoice.InvoiceDate,
+            postingContext,
+            $"Vendor invoice {invoice.InvoiceNumber}",
+            invoice.VendorInvoiceRef,
+            "Accounts Payable");
+
+        journal.AddLine(
+            accounts[debitAccountNumber].Id,
+            invoice.Description,
+            invoice.TotalAmount,
+            0m);
+        journal.AddLine(
+            accounts["2110"].Id,
+            $"Trade payable - {invoice.InvoiceNumber}",
+            0m,
+            invoice.TotalAmount);
+        journal.Post();
+        return journal;
+    }
+
+    private async Task<JournalEntry> CreatePaymentJournalAsync(
+        APPayment payment,
+        string invoiceNumber,
+        CancellationToken ct)
+    {
+        var postingContext = await LoadJournalPostingContextAsync(
+            payment.PaymentDate, payment.OrganizationId, ct);
+        var settlementAccountNumber = GetSettlementAccountNumber(payment.PaymentMethod);
+        var accounts = await LoadPostingAccountsAsync(
+            new[] { "2110", settlementAccountNumber },
+            payment.OrganizationId,
+            postingContext.Ledger.ChartOfAccountsId,
+            ct);
+        var journalCount = await _db.JournalEntries.CountAsync(ct) + 1;
+        return CreatePaymentJournal(
+            payment, invoiceNumber, postingContext, accounts, journalCount);
+    }
+
+    private JournalEntry CreatePaymentJournal(
+        APPayment payment,
+        string invoiceNumber,
+        (Ledger Ledger, FiscalPeriod Period) postingContext,
+        IReadOnlyDictionary<string, Account> accounts,
+        int journalSequence)
+    {
+        var settlementAccountNumber = GetSettlementAccountNumber(payment.PaymentMethod);
+        var journal = CreateJournal(
+            payment.OrganizationId,
+            journalSequence,
+            payment.PaymentDate,
+            postingContext,
+            $"Vendor payment {payment.PaymentNumber}",
+            payment.Reference ?? invoiceNumber,
+            "Accounts Payable Payment");
+
+        journal.AddLine(
+            accounts["2110"].Id,
+            $"Settle payable - {invoiceNumber}",
+            payment.Amount,
+            0m);
+        journal.AddLine(
+            accounts[settlementAccountNumber].Id,
+            $"Vendor payment - {invoiceNumber}",
+            0m,
+            payment.Amount);
+        journal.Post();
+        return journal;
+    }
+
+    private JournalEntry CreateJournal(
+        Guid organizationId,
+        int journalSequence,
+        DateTime entryDate,
+        (Ledger Ledger, FiscalPeriod Period) postingContext,
+        string description,
+        string reference,
+        string journalType)
+    {
+        var journal = new JournalEntry(
+            organizationId,
+            $"JE-{journalSequence:D6}",
+            entryDate.Date,
+            postingContext.Period.Id,
+            description,
+            reference,
+            journalType,
+            postingContext.Ledger.FunctionalCurrency?.Code ?? "USD",
+            postingContext.Ledger.Id);
+        _db.JournalEntries.Add(journal);
+        return journal;
+    }
+
+    private async Task<(Ledger Ledger, FiscalPeriod Period)> LoadJournalPostingContextAsync(
+        DateTime entryDate,
+        Guid organizationId,
+        CancellationToken ct)
+    {
+        var date = entryDate.Date;
+        var parameters = await _db.GeneralLedgerParameters
+            .Include(p => p.DefaultLedger)
+                .ThenInclude(l => l!.FunctionalCurrency)
+            .FirstOrDefaultAsync(p => p.OrganizationId == organizationId, ct)
+            ?? throw new InvalidOperationException("General ledger parameters are not configured.");
+        var ledger = parameters.DefaultLedger;
+        if (ledger is null || !ledger.IsActive || ledger.OrganizationId != organizationId)
+            throw new InvalidOperationException(
+                "The ledger selected in General Ledger Parameters is missing or inactive.");
+
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p =>
+                p.FiscalYear!.OrganizationId == organizationId &&
+                p.FiscalYear.FiscalCalendarId == ledger.FiscalCalendarId &&
+                p.FiscalYear.Status == FiscalYearStatus.Open &&
+                p.Status == FiscalPeriodStatus.Open &&
+                p.StartDate.Date <= date &&
+                p.EndDate.Date >= date, ct)
+            ?? throw new InvalidOperationException($"No open fiscal period exists for {date:d}.");
+
+        return (ledger, period);
+    }
+
+    private async Task<Dictionary<string, Account>> LoadPostingAccountsAsync(
+        IEnumerable<string> accountNumbers,
+        Guid organizationId,
+        Guid chartOfAccountsId,
+        CancellationToken ct)
+    {
+        var numbers = accountNumbers.Distinct().ToList();
+        var accounts = await _db.Accounts
+            .Where(a =>
+                a.OrganizationId == organizationId &&
+                a.ChartOfAccountsId == chartOfAccountsId &&
+                numbers.Contains(a.AccountNumber) &&
+                !a.IsHeaderAccount &&
+                a.Status == AccountStatus.Active &&
+                !a.IsDeleted)
+            .ToDictionaryAsync(a => a.AccountNumber, ct);
+        var missing = numbers.Where(number => !accounts.ContainsKey(number)).ToList();
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                "Required Accounts Payable posting account(s) are not configured in the selected " +
+                $"ledger's chart of accounts: {string.Join(", ", missing)}.");
+        return accounts;
+    }
+
+    private static string GetSettlementAccountNumber(string paymentMethod) =>
+        paymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase) ? "1110" : "1120";
+
+    private static void ValidatePayment(APInvoice invoice, Guid vendorId, decimal amount)
+    {
+        if (invoice.VendorId != vendorId)
+            throw new InvalidOperationException("The payment vendor does not match the invoice vendor.");
+        if (invoice.Status is not (
+            APInvoiceStatus.Approved or
+            APInvoiceStatus.Scheduled or
+            APInvoiceStatus.Overdue))
+            throw new InvalidOperationException("Only an approved outstanding invoice can be paid.");
+        if (!invoice.JournalEntryId.HasValue)
+            throw new InvalidOperationException(
+                "The invoice has no posted General Ledger journal and cannot be paid.");
+        if (amount <= 0)
+            throw new InvalidOperationException("Payment amount must be positive.");
+        if (amount > invoice.OutstandingAmount + 0.01m)
+            throw new InvalidOperationException(
+                $"Payment amount {amount:0.00} exceeds the invoice outstanding amount " +
+                $"{invoice.OutstandingAmount:0.00}.");
     }
 
     public async Task CancelPaymentProposalAsync(Guid id, CancellationToken ct = default)
