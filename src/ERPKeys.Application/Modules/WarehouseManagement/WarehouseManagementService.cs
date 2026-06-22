@@ -3,17 +3,16 @@ using ERPKeys.Application.Modules.WarehouseManagement.DTOs;
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using ERPKeys.Domain.Modules.ProductManagement;
-using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERPKeys.Infrastructure.Modules.WarehouseManagement;
+namespace ERPKeys.Application.Modules.WarehouseManagement;
 
 public class WarehouseManagementService : IWarehouseManagementService
 {
-    private readonly AppDbContext _db;
+    private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
 
-    public WarehouseManagementService(AppDbContext db, ICurrentOrganizationService org)
+    public WarehouseManagementService(IAppDbContext db, ICurrentOrganizationService org)
     {
         _db = db;
         _org = org;
@@ -48,9 +47,7 @@ public class WarehouseManagementService : IWarehouseManagementService
             dto.WarehouseTypeId, dto.SiteId);
         _db.Warehouses.Add(warehouse);
         await _db.SaveChangesAsync();
-        await _db.Entry(warehouse).Reference(w => w.WarehouseType).LoadAsync();
-        await _db.Entry(warehouse).Reference(w => w.Site).LoadAsync();
-        return ToWarehouseDto(warehouse);
+        return (await GetWarehouseAsync(warehouse.Id))!;
     }
 
     public async Task<WarehouseDto?> UpdateWarehouseAsync(Guid id, UpdateWarehouseDto dto)
@@ -61,9 +58,7 @@ public class WarehouseManagementService : IWarehouseManagementService
         warehouse.Update(dto.Name, dto.Address, dto.City, dto.Country,
             dto.WarehouseTypeId, dto.SiteId);
         await _db.SaveChangesAsync();
-        await _db.Entry(warehouse).Reference(w => w.WarehouseType).LoadAsync();
-        await _db.Entry(warehouse).Reference(w => w.Site).LoadAsync();
-        return ToWarehouseDto(warehouse);
+        return await GetWarehouseAsync(warehouse.Id);
     }
 
     public async Task<List<WarehouseTypeDto>> GetWarehouseTypesAsync()
@@ -215,9 +210,7 @@ public class WarehouseManagementService : IWarehouseManagementService
 
         _db.InboundOrders.Add(order);
         await _db.SaveChangesAsync();
-
-        await _db.Entry(order).Reference(x => x.Warehouse).LoadAsync();
-        return ToInboundDto(order);
+        return (await GetInboundOrderAsync(order.Id))!;
     }
 
     public async Task<bool> ConfirmInboundOrderAsync(Guid id)          => await AdvanceInbound(id, o => o.Confirm());
@@ -295,8 +288,7 @@ public class WarehouseManagementService : IWarehouseManagementService
 
         _db.OutboundOrders.Add(order);
         await _db.SaveChangesAsync();
-        await _db.Entry(order).Reference(x => x.Warehouse).LoadAsync();
-        return ToOutboundDto(order);
+        return (await GetOutboundOrderAsync(order.Id))!;
     }
 
     public async Task<bool> ConfirmOutboundOrderAsync(Guid id)  => await AdvanceOutbound(id, o => o.Confirm());
@@ -375,9 +367,7 @@ public class WarehouseManagementService : IWarehouseManagementService
 
         _db.TransferOrders.Add(order);
         await _db.SaveChangesAsync();
-        await _db.Entry(order).Reference(x => x.FromWarehouse).LoadAsync();
-        await _db.Entry(order).Reference(x => x.ToWarehouse).LoadAsync();
-        return ToTransferDto(order);
+        return (await GetTransferOrderAsync(order.Id))!;
     }
 
     public async Task<bool> ConfirmTransferOrderAsync(Guid id)        => await AdvanceTransfer(id, o => o.Confirm());

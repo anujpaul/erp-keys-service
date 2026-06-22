@@ -4,7 +4,7 @@ using ERPKeys.Application.Modules.CashBank.DTOs;
 using ERPKeys.Domain.Modules.CashBank;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERPKeys.Infrastructure.Modules.CashBank;
+namespace ERPKeys.Application.Modules.CashBank;
 
 public class CashBankService : ICashBankService
 {

@@ -45,6 +45,12 @@ public interface IAppDbContext
     DbSet<OperationalSite> OperationalSites { get; }
     DbSet<WarehouseLocation> WarehouseLocations { get; }
     DbSet<WarehouseInventoryBalance> WarehouseInventoryBalances { get; }
+    DbSet<InboundOrder> InboundOrders { get; }
+    DbSet<InboundOrderLine> InboundOrderLines { get; }
+    DbSet<OutboundOrder> OutboundOrders { get; }
+    DbSet<OutboundOrderLine> OutboundOrderLines { get; }
+    DbSet<TransferOrder> TransferOrders { get; }
+    DbSet<TransferOrderLine> TransferOrderLines { get; }
 
     // General Ledger
     DbSet<FiscalCalendar> FiscalCalendars { get; }

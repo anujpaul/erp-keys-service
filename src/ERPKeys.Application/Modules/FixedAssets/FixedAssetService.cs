@@ -4,7 +4,7 @@ using ERPKeys.Application.Modules.FixedAssets.DTOs;
 using ERPKeys.Domain.Modules.FixedAssets;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERPKeys.Infrastructure.Modules.FixedAssets;
+namespace ERPKeys.Application.Modules.FixedAssets;
 
 public class FixedAssetService : IFixedAssetService
 {
