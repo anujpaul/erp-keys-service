@@ -17,6 +17,12 @@ public class AppUser : BaseEntity
     public string? Phone       { get; private set; }
     public string? Timezone    { get; private set; }
     public string? Locale      { get; private set; }
+    public string? AddressLine1 { get; private set; }
+    public string? AddressLine2 { get; private set; }
+    public string? City         { get; private set; }
+    public string? State        { get; private set; }
+    public string? PostalCode   { get; private set; }
+    public string? Country      { get; private set; }
     public string PasswordHash { get; private set; } = string.Empty;
     public UserStatus Status   { get; private set; } = UserStatus.Active;
     public DateTime? LastLoginAt { get; private set; }
@@ -47,7 +53,13 @@ public class AppUser : BaseEntity
         string? department,
         string? phone,
         string? timezone,
-        string? locale)
+        string? locale,
+        string? addressLine1 = null,
+        string? addressLine2 = null,
+        string? city = null,
+        string? state = null,
+        string? postalCode = null,
+        string? country = null)
     {
         Email    = email.ToLowerInvariant().Trim();
         FullName = fullName.Trim();
@@ -57,6 +69,12 @@ public class AppUser : BaseEntity
         Phone = Normalize(phone);
         Timezone = Normalize(timezone);
         Locale = Normalize(locale);
+        AddressLine1 = Normalize(addressLine1);
+        AddressLine2 = Normalize(addressLine2);
+        City = Normalize(city);
+        State = Normalize(state);
+        PostalCode = Normalize(postalCode);
+        Country = Normalize(country)?.ToUpperInvariant();
         SetUpdated();
     }
 

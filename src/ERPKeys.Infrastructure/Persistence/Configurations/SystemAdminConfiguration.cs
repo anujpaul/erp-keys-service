@@ -25,6 +25,12 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         b.Property(e => e.Phone).HasMaxLength(50);
         b.Property(e => e.Timezone).HasMaxLength(100);
         b.Property(e => e.Locale).HasMaxLength(20);
+        b.Property(e => e.AddressLine1).HasMaxLength(250);
+        b.Property(e => e.AddressLine2).HasMaxLength(250);
+        b.Property(e => e.City).HasMaxLength(150);
+        b.Property(e => e.State).HasMaxLength(150);
+        b.Property(e => e.PostalCode).HasMaxLength(30);
+        b.Property(e => e.Country).HasMaxLength(2);
         b.Property(e => e.PasswordHash).HasMaxLength(500).IsRequired();
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(e => e.RefreshToken).HasMaxLength(500);

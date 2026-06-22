@@ -65,7 +65,8 @@ public class SystemAdminService : ISystemAdminService
         var hash = _hasher.Hash(req.Password);
         var user = new AppUser(OrgId, req.Username, req.Email, req.FullName, hash);
         user.UpdateProfile(req.Email, req.FullName, req.EmployeeId, req.JobTitle,
-            req.Department, req.Phone, req.Timezone, req.Locale);
+            req.Department, req.Phone, req.Timezone, req.Locale,
+            req.AddressLine1, req.AddressLine2, req.City, req.State, req.PostalCode, req.Country);
 
         foreach (var roleId in req.RoleIds ?? [])
             user.AssignRole(roleId);
@@ -74,7 +75,8 @@ public class SystemAdminService : ISystemAdminService
         AddUserAudit(user, "Create", null, new
         {
             user.Username, user.Email, user.FullName, user.EmployeeId,
-            user.JobTitle, user.Department, Roles = req.RoleIds
+            user.JobTitle, user.Department, user.AddressLine1, user.AddressLine2,
+            user.City, user.State, user.PostalCode, user.Country, Roles = req.RoleIds
         });
         await _db.SaveChangesAsync(ct);
         return (await GetUserAsync(user.Id, ct))!;
@@ -96,11 +98,13 @@ public class SystemAdminService : ISystemAdminService
         {
             user.Email, user.FullName, user.EmployeeId, user.JobTitle,
             user.Department, user.Phone, user.Timezone, user.Locale,
+            user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
             Roles = user.UserRoles.Select(r => r.RoleId).ToArray()
         };
 
         user.UpdateProfile(req.Email, req.FullName, req.EmployeeId, req.JobTitle,
-            req.Department, req.Phone, req.Timezone, req.Locale);
+            req.Department, req.Phone, req.Timezone, req.Locale,
+            req.AddressLine1, req.AddressLine2, req.City, req.State, req.PostalCode, req.Country);
 
         var currentRoles = user.UserRoles.Select(r => r.RoleId).ToHashSet();
         var newRoles     = (req.RoleIds ?? []).ToHashSet();
@@ -111,6 +115,7 @@ public class SystemAdminService : ISystemAdminService
         {
             user.Email, user.FullName, user.EmployeeId, user.JobTitle,
             user.Department, user.Phone, user.Timezone, user.Locale,
+            user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
             Roles = newRoles
         });
         await _db.SaveChangesAsync(ct);
@@ -270,6 +275,7 @@ public class SystemAdminService : ISystemAdminService
     private static UserDto ToUserDto(AppUser u) => new(
         u.Id, u.OrganizationId, u.PreferredOrganizationId, u.Username, u.Email, u.FullName,
         u.EmployeeId, u.JobTitle, u.Department, u.Phone, u.Timezone, u.Locale,
+        u.AddressLine1, u.AddressLine2, u.City, u.State, u.PostalCode, u.Country,
         u.Status.ToString(), u.LastLoginAt,
         u.UserRoles.Where(r => r.Role != null).Select(r => r.Role!.Name).ToList(),
         PermissionCatalog.ExpandForRoles(u.UserRoles

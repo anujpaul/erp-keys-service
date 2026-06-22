@@ -440,6 +440,7 @@ public class AccountsReceivableService : IAccountsReceivableService
     public async Task ShipSalesOrderAsync(Guid id, ShipOrderRequest req, CancellationToken ct = default)
     {
         var order = await LoadOrderWithLines(id, ct);
+        await ValidateShippingAddressAsync(order, ct);
         var oldStatus = order.Status.ToString();
         var fullyShipped = await ShipSalesOrderInventoryAsync(order, req, ct);
         order.Ship(req.ShipDate ?? DateTime.UtcNow, fullyShipped);
@@ -823,6 +824,30 @@ public class AccountsReceivableService : IAccountsReceivableService
             .Include(o => o.Customer)
             .FirstOrDefaultAsync(o => o.Id == id && !o.IsDeleted, ct)
             ?? throw new InvalidOperationException("Sales order not found.");
+    }
+
+    private async Task ValidateShippingAddressAsync(SalesOrder order, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(order.Customer?.ShippingAddress))
+            return;
+
+        var hasStructuredShippingAddress = await _db.CustomerAddresses
+            .AsNoTracking()
+            .AnyAsync(address =>
+                address.CustomerId == order.CustomerId &&
+                !address.IsDeleted &&
+                address.AddressType == AddressType.Shipping &&
+                !string.IsNullOrWhiteSpace(address.Line1) &&
+                !string.IsNullOrWhiteSpace(address.City) &&
+                !string.IsNullOrWhiteSpace(address.Country),
+                ct);
+
+        if (!hasStructuredShippingAddress)
+        {
+            throw new InvalidOperationException(
+                "A shipping address is required before this sales order can be shipped. " +
+                "Add a shipping address to the customer and try again.");
+        }
     }
 
     private async Task ReserveSalesOrderInventoryAsync(

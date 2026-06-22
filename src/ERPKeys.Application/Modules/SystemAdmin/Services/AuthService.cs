@@ -54,6 +54,7 @@ public class AuthService : IAuthService
             new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
                 user.Username, user.Email, user.FullName,
                 user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+                user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
                 user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
     }
 
@@ -79,6 +80,7 @@ public class AuthService : IAuthService
             new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
                 user.Username, user.Email, user.FullName,
                 user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+                user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
                 user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
     }
 
@@ -134,6 +136,7 @@ public class AuthService : IAuthService
         return new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
             user.Username, user.Email, user.FullName,
             user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+            user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
             user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt);
     }
 

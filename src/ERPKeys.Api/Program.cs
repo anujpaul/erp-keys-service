@@ -35,9 +35,11 @@ using ERPKeys.Worker.Workers;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.IdentityModel.Tokens;
+using System.Threading.RateLimiting;
 //using Microsoft.OpenApi.Models;
 
 
@@ -117,6 +119,27 @@ builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISystemAdminService, SystemAdminService>();
+builder.Services.AddHttpClient<IAddressLookupService, GoogleAddressLookupService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("address-lookup", context =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 // ── JWT Authentication ────────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("JwtSettings");
@@ -284,6 +307,7 @@ else
 }
 
 app.UseAuthentication();
+app.UseRateLimiter();
 
 // Enforce organization access on every organization-scoped request. Admin users
 // may work in any active organization; other users are restricted to the

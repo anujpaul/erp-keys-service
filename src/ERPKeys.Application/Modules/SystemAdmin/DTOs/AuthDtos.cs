@@ -17,6 +17,8 @@ public record UserDto(
     string Username, string Email, string FullName,
     string? EmployeeId, string? JobTitle, string? Department,
     string? Phone, string? Timezone, string? Locale,
+    string? AddressLine1, string? AddressLine2, string? City,
+    string? State, string? PostalCode, string? Country,
     string Status, DateTime? LastLoginAt,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions,
@@ -30,7 +32,13 @@ public record CreateUserRequest(
     string? Department = null,
     string? Phone = null,
     string? Timezone = null,
-    string? Locale = null);
+    string? Locale = null,
+    string? AddressLine1 = null,
+    string? AddressLine2 = null,
+    string? City = null,
+    string? State = null,
+    string? PostalCode = null,
+    string? Country = null);
 
 public record UpdateUserRequest(
     string Email, string FullName, IList<Guid> RoleIds,
@@ -39,7 +47,13 @@ public record UpdateUserRequest(
     string? Department = null,
     string? Phone = null,
     string? Timezone = null,
-    string? Locale = null);
+    string? Locale = null,
+    string? AddressLine1 = null,
+    string? AddressLine2 = null,
+    string? City = null,
+    string? State = null,
+    string? PostalCode = null,
+    string? Country = null);
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
