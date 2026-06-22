@@ -834,6 +834,7 @@ public class AccountsReceivableService : IAccountsReceivableService
         var hasStructuredShippingAddress = await _db.CustomerAddresses
             .AsNoTracking()
             .AnyAsync(address =>
+                address.OrganizationId == _org.OrganizationId &&
                 address.CustomerId == order.CustomerId &&
                 !address.IsDeleted &&
                 address.AddressType == AddressType.Shipping &&
