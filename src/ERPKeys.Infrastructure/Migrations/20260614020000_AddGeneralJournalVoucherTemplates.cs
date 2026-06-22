@@ -1,4 +1,3 @@
-using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;

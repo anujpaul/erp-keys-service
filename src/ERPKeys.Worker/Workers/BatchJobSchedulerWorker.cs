@@ -3,9 +3,6 @@ using ERPKeys.Domain.Modules.DataManagement;
 using ERPKeys.Worker.Jobs;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace ERPKeys.Worker.Workers;
 
@@ -20,7 +17,7 @@ public class BatchJobSchedulerWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BatchJobSchedulerWorker> _logger;
-    private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(3600);
 
     // Tracks every batch-job-* ID we have ever registered so we can remove orphans
     // when a config is deleted between sync cycles.

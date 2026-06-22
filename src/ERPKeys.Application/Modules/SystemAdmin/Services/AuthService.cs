@@ -53,7 +53,8 @@ public class AuthService : IAuthService
         return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
             new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
                 user.Username, user.Email, user.FullName,
-                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt));
+                user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
     }
 
     public async Task<LoginResponse> RefreshAsync(RefreshTokenRequest req, string? ipAddress, CancellationToken ct = default)
@@ -77,7 +78,8 @@ public class AuthService : IAuthService
         return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
             new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
                 user.Username, user.Email, user.FullName,
-                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt));
+                user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
     }
 
     public async Task LogoutAsync(Guid userId, CancellationToken ct = default)
@@ -130,8 +132,9 @@ public class AuthService : IAuthService
         var permissions = PermissionCatalog.ExpandForRoles(storedPermissions, roles).Order().ToList();
 
         return new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
-            user.Username, user.Email, user.FullName, user.Status.ToString(),
-            user.LastLoginAt, roles, permissions, user.CreatedAt);
+            user.Username, user.Email, user.FullName,
+            user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
+            user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt);
     }
 
     private async Task<(List<string> Roles, List<string> Permissions)> LoadAuthorizationAsync(

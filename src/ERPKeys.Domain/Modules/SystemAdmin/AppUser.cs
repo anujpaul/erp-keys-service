@@ -11,6 +11,12 @@ public class AppUser : BaseEntity
     public string Username     { get; private set; } = string.Empty;
     public string Email        { get; private set; } = string.Empty;
     public string FullName     { get; private set; } = string.Empty;
+    public string? EmployeeId  { get; private set; }
+    public string? JobTitle    { get; private set; }
+    public string? Department  { get; private set; }
+    public string? Phone       { get; private set; }
+    public string? Timezone    { get; private set; }
+    public string? Locale      { get; private set; }
     public string PasswordHash { get; private set; } = string.Empty;
     public UserStatus Status   { get; private set; } = UserStatus.Active;
     public DateTime? LastLoginAt { get; private set; }
@@ -33,12 +39,29 @@ public class AppUser : BaseEntity
         PasswordHash   = passwordHash;
     }
 
-    public void UpdateProfile(string email, string fullName)
+    public void UpdateProfile(
+        string email,
+        string fullName,
+        string? employeeId,
+        string? jobTitle,
+        string? department,
+        string? phone,
+        string? timezone,
+        string? locale)
     {
         Email    = email.ToLowerInvariant().Trim();
         FullName = fullName.Trim();
+        EmployeeId = Normalize(employeeId);
+        JobTitle = Normalize(jobTitle);
+        Department = Normalize(department);
+        Phone = Normalize(phone);
+        Timezone = Normalize(timezone);
+        Locale = Normalize(locale);
         SetUpdated();
     }
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public void SetPasswordHash(string hash) { PasswordHash = hash; SetUpdated(); }
 
@@ -69,7 +92,7 @@ public class AppUser : BaseEntity
 
     public void Unlock()   { Status = UserStatus.Active; FailedLoginAttempts = 0; LockedUntil = null; SetUpdated(); }
     public void Deactivate() { Status = UserStatus.Inactive; SetUpdated(); }
-    public void Activate()   { Status = UserStatus.Active;   SetUpdated(); }
+    public void Activate()   { Unlock(); }
 
     public bool IsLockedOut => Status == UserStatus.Locked ||
                                (LockedUntil.HasValue && LockedUntil > DateTime.UtcNow);

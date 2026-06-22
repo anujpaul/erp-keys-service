@@ -19,10 +19,19 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         b.Property(e => e.Username).HasMaxLength(100).IsRequired();
         b.Property(e => e.Email).HasMaxLength(200).IsRequired();
         b.Property(e => e.FullName).HasMaxLength(200).IsRequired();
+        b.Property(e => e.EmployeeId).HasMaxLength(100);
+        b.Property(e => e.JobTitle).HasMaxLength(150);
+        b.Property(e => e.Department).HasMaxLength(150);
+        b.Property(e => e.Phone).HasMaxLength(50);
+        b.Property(e => e.Timezone).HasMaxLength(100);
+        b.Property(e => e.Locale).HasMaxLength(20);
         b.Property(e => e.PasswordHash).HasMaxLength(500).IsRequired();
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(e => e.RefreshToken).HasMaxLength(500);
         b.HasIndex(e => new { e.OrganizationId, e.Username }).IsUnique();
+        b.HasIndex(e => new { e.OrganizationId, e.EmployeeId })
+            .IsUnique()
+            .HasFilter("employee_id IS NOT NULL");
         b.HasMany(e => e.UserRoles).WithOne()
             .HasForeignKey(ur => ur.UserId).OnDelete(DeleteBehavior.Cascade);
     }

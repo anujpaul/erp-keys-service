@@ -54,16 +54,16 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemUsersManage)]
     public async Task<IActionResult> ActivateUser(Guid id, CancellationToken ct)
     {
-        await _svc.ActivateUserAsync(id, ct);
-        return NoContent();
+        try { await _svc.ActivateUserAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpPost("users/{id:guid}/deactivate")]
     [Authorize(Policy = PermissionKeys.SystemUsersManage)]
     public async Task<IActionResult> DeactivateUser(Guid id, CancellationToken ct)
     {
-        await _svc.DeactivateUserAsync(id, ct);
-        return NoContent();
+        try { await _svc.DeactivateUserAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpPost("users/reset-password")]

@@ -4,6 +4,7 @@ using ERPKeys.Application.Modules.SystemAdmin.DTOs;
 using ERPKeys.Domain.Common;
 using ERPKeys.Domain.Modules.SystemAdmin;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace ERPKeys.Application.Modules.SystemAdmin.Services;
 
@@ -11,12 +12,18 @@ public class SystemAdminService : ISystemAdminService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
+    private readonly ICurrentUserService _currentUser;
     private readonly IPasswordHasher _hasher;
 
-    public SystemAdminService(IAppDbContext db, ICurrentOrganizationService org, IPasswordHasher hasher)
+    public SystemAdminService(
+        IAppDbContext db,
+        ICurrentOrganizationService org,
+        ICurrentUserService currentUser,
+        IPasswordHasher hasher)
     {
         _db     = db;
         _org    = org;
+        _currentUser = currentUser;
         _hasher = hasher;
     }
 
@@ -44,42 +51,79 @@ public class SystemAdminService : ISystemAdminService
 
     public async Task<UserDto> CreateUserAsync(CreateUserRequest req, CancellationToken ct = default)
     {
+        ValidateUserProfile(req.Email, req.FullName);
+        if (string.IsNullOrWhiteSpace(req.Username) || req.Username.Trim().Length < 3)
+            throw new InvalidOperationException("Username must contain at least 3 characters.");
+        if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
+            throw new InvalidOperationException("Temporary password must contain at least 8 characters.");
         if (await _db.AppUsers.AnyAsync(u => u.Username == req.Username.ToLowerInvariant() && u.OrganizationId == OrgId, ct))
             throw new InvalidOperationException($"Username '{req.Username}' is already taken.");
+        await ValidateEmailAsync(req.Email, null, ct);
+        await ValidateEmployeeIdAsync(req.EmployeeId, null, ct);
+        await ValidateRolesAsync(req.RoleIds, ct);
 
         var hash = _hasher.Hash(req.Password);
         var user = new AppUser(OrgId, req.Username, req.Email, req.FullName, hash);
+        user.UpdateProfile(req.Email, req.FullName, req.EmployeeId, req.JobTitle,
+            req.Department, req.Phone, req.Timezone, req.Locale);
 
         foreach (var roleId in req.RoleIds ?? [])
             user.AssignRole(roleId);
 
         _db.AppUsers.Add(user);
+        AddUserAudit(user, "Create", null, new
+        {
+            user.Username, user.Email, user.FullName, user.EmployeeId,
+            user.JobTitle, user.Department, Roles = req.RoleIds
+        });
         await _db.SaveChangesAsync(ct);
         return (await GetUserAsync(user.Id, ct))!;
     }
 
     public async Task<UserDto> UpdateUserAsync(Guid id, UpdateUserRequest req, CancellationToken ct = default)
     {
+        ValidateUserProfile(req.Email, req.FullName);
         var user = await _db.AppUsers
             .Include(u => u.UserRoles)
             .FirstOrDefaultAsync(u => u.Id == id && u.OrganizationId == OrgId && !u.IsDeleted, ct)
             ?? throw new InvalidOperationException("User not found.");
 
-        user.UpdateProfile(req.Email, req.FullName);
+        await ValidateEmployeeIdAsync(req.EmployeeId, id, ct);
+        await ValidateEmailAsync(req.Email, id, ct);
+        await ValidateRolesAsync(req.RoleIds, ct);
+
+        var oldValues = new
+        {
+            user.Email, user.FullName, user.EmployeeId, user.JobTitle,
+            user.Department, user.Phone, user.Timezone, user.Locale,
+            Roles = user.UserRoles.Select(r => r.RoleId).ToArray()
+        };
+
+        user.UpdateProfile(req.Email, req.FullName, req.EmployeeId, req.JobTitle,
+            req.Department, req.Phone, req.Timezone, req.Locale);
 
         var currentRoles = user.UserRoles.Select(r => r.RoleId).ToHashSet();
         var newRoles     = (req.RoleIds ?? []).ToHashSet();
         foreach (var r in newRoles.Except(currentRoles)) user.AssignRole(r);
         foreach (var r in currentRoles.Except(newRoles)) user.RemoveRole(r);
 
+        AddUserAudit(user, "Update", oldValues, new
+        {
+            user.Email, user.FullName, user.EmployeeId, user.JobTitle,
+            user.Department, user.Phone, user.Timezone, user.Locale,
+            Roles = newRoles
+        });
         await _db.SaveChangesAsync(ct);
         return (await GetUserAsync(id, ct))!;
     }
 
     public async Task DeactivateUserAsync(Guid id, CancellationToken ct = default)
     {
+        if (_currentUser.UserId == id)
+            throw new InvalidOperationException("You cannot deactivate your own account.");
         var user = await LoadUser(id, ct);
         user.Deactivate();
+        AddUserAudit(user, "Deactivate", null, new { Status = user.Status.ToString() });
         await _db.SaveChangesAsync(ct);
     }
 
@@ -87,6 +131,7 @@ public class SystemAdminService : ISystemAdminService
     {
         var user = await LoadUser(id, ct);
         user.Activate();
+        AddUserAudit(user, "Activate", null, new { Status = user.Status.ToString() });
         await _db.SaveChangesAsync(ct);
     }
 
@@ -94,6 +139,7 @@ public class SystemAdminService : ISystemAdminService
     {
         var user = await LoadUser(req.UserId, ct);
         user.SetPasswordHash(_hasher.Hash(req.NewPassword));
+        AddUserAudit(user, "ResetPassword", null, new { PasswordReset = true });
         await _db.SaveChangesAsync(ct);
     }
 
@@ -223,6 +269,7 @@ public class SystemAdminService : ISystemAdminService
 
     private static UserDto ToUserDto(AppUser u) => new(
         u.Id, u.OrganizationId, u.PreferredOrganizationId, u.Username, u.Email, u.FullName,
+        u.EmployeeId, u.JobTitle, u.Department, u.Phone, u.Timezone, u.Locale,
         u.Status.ToString(), u.LastLoginAt,
         u.UserRoles.Where(r => r.Role != null).Select(r => r.Role!.Name).ToList(),
         PermissionCatalog.ExpandForRoles(u.UserRoles
@@ -232,7 +279,65 @@ public class SystemAdminService : ISystemAdminService
             u.UserRoles.Where(r => r.Role != null).Select(r => r.Role!.Name))
             .Order()
             .ToList(),
-        u.CreatedAt);
+        u.CreatedAt, u.UpdatedAt);
+
+    private static void ValidateUserProfile(string email, string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            throw new InvalidOperationException("Full name is required.");
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            throw new InvalidOperationException("Enter a valid email address.");
+    }
+
+    private async Task ValidateEmployeeIdAsync(string? employeeId, Guid? excludedUserId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(employeeId)) return;
+        var normalized = employeeId.Trim();
+        var exists = await _db.AppUsers.AnyAsync(u =>
+            u.OrganizationId == OrgId &&
+            u.EmployeeId == normalized &&
+            (!excludedUserId.HasValue || u.Id != excludedUserId.Value) &&
+            !u.IsDeleted, ct);
+        if (exists)
+            throw new InvalidOperationException($"Employee ID '{normalized}' is already assigned.");
+    }
+
+    private async Task ValidateEmailAsync(string email, Guid? excludedUserId, CancellationToken ct)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        var exists = await _db.AppUsers.AnyAsync(u =>
+            u.OrganizationId == OrgId &&
+            u.Email == normalized &&
+            (!excludedUserId.HasValue || u.Id != excludedUserId.Value) &&
+            !u.IsDeleted, ct);
+        if (exists)
+            throw new InvalidOperationException($"Email address '{normalized}' is already assigned.");
+    }
+
+    private async Task ValidateRolesAsync(IEnumerable<Guid>? roleIds, CancellationToken ct)
+    {
+        var requested = (roleIds ?? []).Distinct().ToArray();
+        if (requested.Length == 0) return;
+        var validCount = await _db.Roles.CountAsync(r =>
+            requested.Contains(r.Id) && r.OrganizationId == OrgId && !r.IsDeleted, ct);
+        if (validCount != requested.Length)
+            throw new InvalidOperationException("One or more selected roles are not available in this organization.");
+    }
+
+    private void AddUserAudit(AppUser target, string action, object? oldValues, object? newValues)
+    {
+        _db.AuditLogs.Add(new AuditLogEntry(
+            OrgId,
+            _currentUser.UserId,
+            _currentUser.Username,
+            "SystemAdmin",
+            $"User{action}",
+            target.Id.ToString(),
+            nameof(AppUser),
+            oldValues is null ? null : JsonSerializer.Serialize(oldValues),
+            newValues is null ? null : JsonSerializer.Serialize(newValues),
+            _currentUser.IpAddress));
+    }
 
     private static RoleDto ToRoleDto(Role r) => new(
         r.Id, r.Name, r.Description, r.IsSystemRole,

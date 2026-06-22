@@ -1,4 +1,3 @@
-using ERPKeys.Domain.Modules.AccountsPayable;
 using ERPKeys.Domain.Modules.GeneralLedger;
 using ERPKeys.Domain.Modules.Organization;
 using ERPKeys.Domain.Modules.ProductManagement;
@@ -6,8 +5,8 @@ using ERPKeys.Domain.Modules.SystemAdmin;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 // AR namespace excluded — seeder only uses PM.Product; AR.Product is an obsolete tombstone
-using Customer  = ERPKeys.Domain.Modules.AccountsReceivable.Customer;
-using Vendor    = ERPKeys.Domain.Modules.AccountsPayable.Vendor;
+using Customer = ERPKeys.Domain.Modules.AccountsReceivable.Customer;
+using Vendor = ERPKeys.Domain.Modules.AccountsPayable.Vendor;
 
 namespace ERPKeys.Infrastructure.Persistence.Seed;
 

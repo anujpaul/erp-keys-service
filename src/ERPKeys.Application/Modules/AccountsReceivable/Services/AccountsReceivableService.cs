@@ -509,12 +509,17 @@ public class AccountsReceivableService : IAccountsReceivableService
             ct);
         var lines = BuildInvoicePostingLines(invoice, accounts);
 
+        var canPost = invoice.Status == ARInvoiceStatus.Draft && !invoice.IsSubmittedForApproval;
+        var postingStatus = invoice.IsSubmittedForApproval
+            ? "PendingApproval"
+            : canPost ? "ReadyToPost" : "NotPostable";
+
         return new ARInvoicePostingDto(
             invoice.Id,
             invoice.InvoiceNumber,
             invoice.Status.ToString(),
-            invoice.Status == ARInvoiceStatus.Draft && !invoice.IsSubmittedForApproval,
-            invoice.IsSubmittedForApproval ? "PendingApproval" : "ReadyToPost",
+            canPost,
+            postingStatus,
             null,
             null,
             null,

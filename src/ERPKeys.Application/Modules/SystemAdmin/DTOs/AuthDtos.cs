@@ -15,16 +15,31 @@ public record RefreshTokenRequest(string RefreshToken);
 public record UserDto(
     Guid Id, Guid OrganizationId, Guid? PreferredOrganizationId,
     string Username, string Email, string FullName,
+    string? EmployeeId, string? JobTitle, string? Department,
+    string? Phone, string? Timezone, string? Locale,
     string Status, DateTime? LastLoginAt,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions,
-    DateTime CreatedAt);
+    DateTime CreatedAt, DateTime UpdatedAt);
 
 public record CreateUserRequest(
     string Username, string Email, string FullName,
-    string Password, IList<Guid> RoleIds);
+    string Password, IList<Guid> RoleIds,
+    string? EmployeeId = null,
+    string? JobTitle = null,
+    string? Department = null,
+    string? Phone = null,
+    string? Timezone = null,
+    string? Locale = null);
 
-public record UpdateUserRequest(string Email, string FullName, IList<Guid> RoleIds);
+public record UpdateUserRequest(
+    string Email, string FullName, IList<Guid> RoleIds,
+    string? EmployeeId = null,
+    string? JobTitle = null,
+    string? Department = null,
+    string? Phone = null,
+    string? Timezone = null,
+    string? Locale = null);
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 

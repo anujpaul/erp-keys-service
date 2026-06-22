@@ -1,7 +1,6 @@
 using ERPKeys.Application.Common.Interfaces;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace ERPKeys.Worker.Jobs;
 

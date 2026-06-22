@@ -1,5 +1,4 @@
 using ERPKeys.Application.Modules.DataManagement.Services;
-using Microsoft.Extensions.Logging;
 
 namespace ERPKeys.Worker.Jobs;
 

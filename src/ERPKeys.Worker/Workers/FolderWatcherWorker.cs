@@ -1,10 +1,5 @@
 using ERPKeys.Application.Modules.DataManagement.Services;
-using ERPKeys.Domain.Modules.DataManagement;
 using Hangfire;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ERPKeys.Worker.Jobs;
 
 namespace ERPKeys.Worker.Workers;
