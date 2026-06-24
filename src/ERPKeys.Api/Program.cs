@@ -23,6 +23,8 @@ using ERPKeys.Application.Modules.WarehouseManagement;
 using ERPKeys.Application.Modules.Marketing.Services;
 using ERPKeys.Application.Modules.Retail.Services;
 using ERPKeys.Application.Modules.SystemAdmin.Services;
+using ERPKeys.Application.Modules.Rag;
+using ERPKeys.Infrastructure.Modules.Rag;
 using ERPKeys.Infrastructure.Persistence;
 using ERPKeys.Infrastructure.Persistence.Seed;
 using ERPKeys.Infrastructure.Services;
@@ -37,6 +39,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
+using Pgvector.EntityFrameworkCore;
 //using Microsoft.OpenApi.Models;
 
 
@@ -58,7 +61,11 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString,
-            npgsql => npgsql.MigrationsAssembly("ERPKeys.Infrastructure"))
+            npgsql =>
+            {
+                npgsql.MigrationsAssembly("ERPKeys.Infrastructure");
+                npgsql.UseVector();
+            })
         .UseSnakeCaseNamingConvention()
         .ReplaceService<IHistoryRepository, LegacyNamingHistoryRepository>());
 
@@ -82,6 +89,13 @@ builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IWarehouseManagementService, WarehouseManagementService>();
 builder.Services.AddScoped<ICashBankService, CashBankService>();
 builder.Services.AddScoped<IFixedAssetService, FixedAssetService>();
+builder.Services.AddScoped<IRagService, RagService>();
+builder.Services.AddScoped<IRagVectorStore, PgvectorRagVectorStore>();
+builder.Services.AddHttpClient<IOpenAiRagClient, OpenAiRagClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.openai.com/");
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
 
 // ── Data Management ───────────────────────────────────────────────────────────
 builder.Services.AddScoped<IDataManagementService, DataManagementService>();
@@ -120,6 +134,11 @@ builder.Services.AddHttpClient<IAddressLookupService, GoogleAddressLookupService
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+
+Func<int, bool> isEven = num => num %2 ==0;
+
+System.Console.WriteLine($"201 is Even? : {isEven(201)}");
+
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("address-lookup", context =>

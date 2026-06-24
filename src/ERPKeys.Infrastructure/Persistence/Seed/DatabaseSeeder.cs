@@ -403,10 +403,10 @@ public static class DatabaseSeeder
         // ── Men's Clothing ───────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-PANT-001", "Fire Hose Work Pants",
+            new Product(orgId, "PANT-001", "Work Pants",
                 catMensClothing.Id, ProductType.Clothing, 84.50m, 32.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Men,
-                "Tough as iron, comfortable all day. Built from our exclusive Fire Hose canvas.",
+                "Tough as iron, comfortable all day. Built from our exclusive canvas.",
                 "workwear,pants,tough"),
             new[]
             {
@@ -422,7 +422,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-SHIRT-001", "Longtail T-Shirt",
+            new Product(orgId, "SHIRT-001", "Longtail T-Shirt",
                 catMensClothing.Id, ProductType.Clothing, 34.50m, 12.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Men,
                 "Extra-long tails stay tucked. Heavyweight cotton for durability.",
@@ -443,7 +443,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-FLANNEL-001", "Alaskan Hardgear Flannel Shirt",
+            new Product(orgId, "FLANNEL-001", "Alaskan Hardgear Flannel Shirt",
                 catMensClothing.Id, ProductType.Clothing, 89.50m, 34.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Men,
                 "Heavyweight flannel for serious outdoor work. Double-woven for warmth.",
@@ -464,11 +464,11 @@ public static class DatabaseSeeder
         // ── Women's Clothing ─────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-WPANT-001", "Women's Flex Fire Hose Work Pants",
+            new Product(orgId, "WPANT-001", "Women's Work Pants",
                 catWomensClothing.Id, ProductType.Clothing, 79.50m, 30.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Women,
-                "All the toughness of Fire Hose with a cut designed for women.",
-                "workwear,pants,women,flex"),
+                "All the toughness of with a cut designed for women.",
+                "pants,women"),
             new[]
             {
                 ("2",  "Midnight", "Canvas", "884592004010", 12m),
@@ -484,7 +484,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-WSHIRT-001", "Women's Longtail T-Shirt",
+            new Product(orgId, "WSHIRT-001", "Women's Longtail T-Shirt",
                 catWomensClothing.Id, ProductType.Clothing, 32.50m, 11.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Women,
                 "Longer length stays tucked, no matter how you move.",
@@ -505,7 +505,7 @@ public static class DatabaseSeeder
         // ── Underwear & Base Layer ───────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-BUCK-M-001", "Buck Naked Performance Underwear — Men",
+            new Product(orgId, "BUCK-M-001", "Buck Naked Performance Underwear — Men",
                 catUnderwear.Id, ProductType.Clothing, 24.50m, 8.50m, 
                 "Each", brandDuluth.Id, GenderTarget.Men,
                 "No chafing, no bunching, no baloney. Our most popular underwear.",
@@ -526,7 +526,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-BUCK-W-001", "Buck Naked Performance Underwear — Women",
+            new Product(orgId, "BUCK-W-001", "Buck Naked Performance Underwear — Women",
                 catUnderwear.Id, ProductType.Clothing, 22.50m, 8.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Women,
                 "Silky-smooth, zero chafe. Designed specifically for women.",
@@ -547,7 +547,7 @@ public static class DatabaseSeeder
         // ── Footwear ─────────────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-BOOT-001", "Duluth XTRATUF Ankle Deck Boot — Men",
+            new Product(orgId, "BOOT-001", "Duluth XTRATUF Ankle Deck Boot — Men",
                 catMensFootwear.Id, ProductType.Footwear, 119.00m, 52.00m, 
                 "Pair", brandDuluth.Id, GenderTarget.Men,
                 "100% waterproof. Non-marking, slip-resistant sole. Built for wet conditions.",
@@ -567,7 +567,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-TRAIL-W-001", "Women's Dry on the Fly Trail Runner",
+            new Product(orgId, "TRAIL-W-001", "Women's Dry on the Fly Trail Runner",
                 catWomensFootwear.Id, ProductType.Footwear, 99.00m, 42.00m, 
                 "Pair", brandDuluth.Id, GenderTarget.Women,
                 "Lightweight, breathable trail runner with moisture-wicking tech.",
@@ -624,7 +624,7 @@ public static class DatabaseSeeder
         // ── Wallets ───────────────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-WALL-001", "Duluth RFID-Blocking Leather Bifold Wallet",
+            new Product(orgId, "WALL-001", "Duluth RFID-Blocking Leather Bifold Wallet",
                 catWallets.Id, ProductType.Accessory, 49.50m, 18.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Unisex,
                 "Full-grain leather. RFID-blocking tech protects your cards. Made to last.",
@@ -638,7 +638,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-WALL-002", "Duluth Slim Card Holder Wallet",
+            new Product(orgId, "WALL-002", "Duluth Slim Card Holder Wallet",
                 catWallets.Id, ProductType.Accessory, 34.50m, 12.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Unisex,
                 "Holds up to 8 cards. Minimalist design with rugged leather construction.",
@@ -681,7 +681,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-CANDY-001", "Duluth Trail Mix Chocolate Bark",
+            new Product(orgId, "CANDY-001", "Duluth Trail Mix Chocolate Bark",
                 catCandy.Id, ProductType.Food, 12.99m, 4.50m, 
                 "Each", brandDuluth.Id, GenderTarget.None,
                 "Dark chocolate bark loaded with nuts, seeds, and dried fruit. Trail-ready energy.",
@@ -697,7 +697,7 @@ public static class DatabaseSeeder
         // ── Creams & Lotions ─────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DTC-CREAM-001", "Duluth Trading Lumber Liquidator Hand Cream",
+            new Product(orgId, "CREAM-001", "Duluth Trading Lumber Liquidator Hand Cream",
                 catCream.Id, ProductType.PersonalCare, 14.99m, 5.50m, 
                 "Each", brandDuluth.Id, GenderTarget.Unisex,
                 "Heavy-duty hand cream. Works fast for cracked, rough hands. Unscented.",
@@ -711,7 +711,7 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "DTC-CREAM-002", "Duluth Aloe Vera After-Sun Lotion",
+            new Product(orgId, "CREAM-002", "Duluth Aloe Vera After-Sun Lotion",
                 catCream.Id, ProductType.PersonalCare, 11.99m, 4.00m, 
                 "Each", brandDuluth.Id, GenderTarget.Unisex,
                 "Soothing aloe vera lotion for sun-exposed skin. Lightweight, fast absorbing.",
@@ -768,7 +768,7 @@ public static class DatabaseSeeder
         logger.LogInformation("Seeding system admin roles, permissions, and admin user...");
 
         // ── Roles ─────────────────────────────────────────────────────────────
-        string[] allModules      = ["GL", "AR", "AP", "PM", "SysAdmin"];
+        string[] allModules      = ["GL", "AR", "AP", "PM", "SysAdmin", "Knowledge"];
         string[] bizModules      = ["GL", "AR", "AP", "PM"];
         string[] allActions      = ["Read", "Write", "Delete", "Approve"];
         string[] rwActions       = ["Read", "Write"];
@@ -782,6 +782,7 @@ public static class DatabaseSeeder
         var managerRole = new Role(orgId, "Manager",
             "Approve transactions and manage day-to-day operations");
         foreach (var m in bizModules) foreach (var a in allActions) managerRole.GrantPermission(m, a);
+        managerRole.GrantPermission("Knowledge", "Read");
         managerRole.GrantPermission("SysAdmin", "Read");
 
         // 3. Accountant — post/write GL+AR+AP, read PM, no delete

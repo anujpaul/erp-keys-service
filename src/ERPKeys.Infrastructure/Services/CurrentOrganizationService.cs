@@ -1,5 +1,6 @@
 using ERPKeys.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 
 namespace ERPKeys.Infrastructure.Services;
 
@@ -21,7 +22,11 @@ public class CurrentOrganizationService : ICurrentOrganizationService
             var header = _httpContextAccessor.HttpContext?.Request.Headers["X-Organization-Id"]
                 .FirstOrDefault();
 
-            return Guid.TryParse(header, out var id) ? id : Guid.Empty;
+            if (Guid.TryParse(header, out var id))
+                return id;
+
+            var tokenOrg = _httpContextAccessor.HttpContext?.User.FindFirstValue("orgId");
+            return Guid.TryParse(tokenOrg, out id) ? id : Guid.Empty;
         }
     }
 }

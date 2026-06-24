@@ -12,6 +12,7 @@ using ERPKeys.Domain.Modules.SystemAdmin;
 using ERPKeys.Domain.Modules.Workflow;
 using ERPKeys.Domain.Modules.Expenses;
 using ERPKeys.Domain.Modules.WarehouseManagement;
+using ERPKeys.Domain.Modules.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -156,6 +157,9 @@ public interface IAppDbContext
     DbSet<AssetDisposal>     AssetDisposals     { get; }
     DbSet<AssetTransfer>     AssetTransfers     { get; }
     DbSet<AssetMaintenance>  AssetMaintenances  { get; }
+
+    // Retrieval-augmented generation
+    DbSet<DocumentChunk> DocumentChunks { get; }
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

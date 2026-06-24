@@ -51,6 +51,8 @@ public static class PermissionKeys
     public const string ExpenseAccess = "expense:access";
     public const string CashBankAccess = "cash-bank:access";
     public const string FixedAssetsAccess = "fixed-assets:access";
+    public const string KnowledgeAccess = "knowledge:access";
+    public const string KnowledgeManage = "knowledge:manage";
 
     public const string SystemAccess = "system:access";
     public const string SystemUsersView = "system.users:view";
@@ -84,6 +86,7 @@ public static class PermissionCatalog
         PermissionKeys.ExpenseAccess,
         PermissionKeys.CashBankAccess,
         PermissionKeys.FixedAssetsAccess,
+        PermissionKeys.KnowledgeAccess,
         PermissionKeys.SystemAccess
     ];
 
@@ -131,6 +134,8 @@ public static class PermissionCatalog
         P(PermissionKeys.ExpenseAccess, "Expenses", "Expenses", "Access", "Use expense management"),
         P(PermissionKeys.CashBankAccess, "Cash and Bank", "Cash and bank", "Access", "Use cash and bank management"),
         P(PermissionKeys.FixedAssetsAccess, "Fixed Assets", "Fixed assets", "Access", "Use fixed asset management"),
+        P(PermissionKeys.KnowledgeAccess, "Knowledge Assistant", "Knowledge base", "Access", "Ask questions against organization documents"),
+        P(PermissionKeys.KnowledgeManage, "Knowledge Assistant", "Documents", "Manage", "Upload and remove knowledge-base documents"),
 
         P(PermissionKeys.SystemUsersView, "System Administration", "Users", "View", "View users"),
         P(PermissionKeys.SystemUsersManage, "System Administration", "Users", "Manage", "Create, edit, activate, and reset users"),
@@ -147,6 +152,7 @@ public static class PermissionCatalog
             ["AR"] = KeysFor("ar."),
             ["AP"] = KeysFor("ap."),
             ["PM"] = [.. KeysFor("product."), .. KeysFor("inventory.")],
+            ["Knowledge"] = [PermissionKeys.KnowledgeAccess, PermissionKeys.KnowledgeManage],
             ["SysAdmin"] = KeysFor("system.")
         };
 
@@ -165,6 +171,7 @@ public static class PermissionCatalog
             ["expense"] = PermissionKeys.ExpenseAccess,
             ["cash-bank"] = PermissionKeys.CashBankAccess,
             ["fixed-assets"] = PermissionKeys.FixedAssetsAccess,
+            ["knowledge"] = PermissionKeys.KnowledgeAccess,
             ["system"] = PermissionKeys.SystemAccess
         };
 

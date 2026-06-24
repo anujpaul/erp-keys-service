@@ -13,9 +13,11 @@ using ERPKeys.Domain.Modules.Expenses;
 using ERPKeys.Domain.Modules.CashBank;
 using ERPKeys.Domain.Modules.FixedAssets;
 using ERPKeys.Domain.Modules.WarehouseManagement;
+using ERPKeys.Domain.Modules.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using PMProduct = ERPKeys.Domain.Modules.ProductManagement.Product;
+using Pgvector.EntityFrameworkCore;
 
 namespace ERPKeys.Infrastructure.Persistence;
 
@@ -149,6 +151,9 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<AssetTransfer>     AssetTransfers     => Set<AssetTransfer>();
     public DbSet<AssetMaintenance>  AssetMaintenances  => Set<AssetMaintenance>();
 
+    // Retrieval-augmented generation
+    public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
+
     // Warehouse Management
     public DbSet<Warehouse>         Warehouses         => Set<Warehouse>();
     public DbSet<WarehouseType>     WarehouseTypes     => Set<WarehouseType>();
@@ -171,6 +176,7 @@ public class AppDbContext : DbContext, IAppDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasPostgresExtension("vector");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
         // Exclude the obsolete AR Product tombstone — it has no table
@@ -201,6 +207,8 @@ public class AppDbContext : DbContext, IAppDbContext
             .HasQueryFilter(e => (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<WarehouseInventoryBalance>()
             .HasQueryFilter(e => _orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId);
+        modelBuilder.Entity<DocumentChunk>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
 
         // GL
         modelBuilder.Entity<FiscalCalendar>()
