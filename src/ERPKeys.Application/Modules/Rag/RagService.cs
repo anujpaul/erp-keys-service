@@ -11,6 +11,8 @@ public sealed class RagService : IRagService
     private const int ChunkSize = 1_200;
     private const int ChunkOverlap = 180;
     private const int SearchLimit = 6;
+    private const int FinanceJournalEntryLimit = 50;
+    private const int FinanceJournalLineLimit = 200;
     private const int MaxDocumentCharacters = 300_000;
     private const int MaxDocumentChunks = 300;
 
@@ -156,25 +158,33 @@ public sealed class RagService : IRagService
         if (string.IsNullOrWhiteSpace(question) || question.Trim().Length < 3)
             throw new InvalidOperationException("Enter a question with at least 3 characters.");
 
+        var financeContext = await BuildFinanceJournalContextAsync(question.Trim(), ct);
         var documents = await GetSearchableDocumentsQuery().ToListAsync(ct);
-        if (documents.Count == 0)
+        if (documents.Count == 0 && financeContext is null)
         {
             return new RagAnswerDto(
-                "Upload at least one knowledge document before asking questions.",
+                "I can answer from live ERP data such as finance journals, or from uploaded knowledge documents. I could not find a matching live data source for this question yet. Try asking about journal entries, ledger balances, debits, credits, revenue, expenses, cash, payables, or receivables.",
                 []);
         }
 
-        var allowedPermissions = _user.Permissions.ToArray();
-        var allowedDocumentIds = documents.Select(document => document.DocumentId).ToArray();
-        var retrievalQuestion = BuildRetrievalQuestion(question.Trim(), history);
-        var embedding = (await _openAi.CreateEmbeddingsAsync([retrievalQuestion], ct)).Single();
-        var hits = await _vectorStore.SearchAsync(
-            _org.OrganizationId,
-            embedding,
-            allowedPermissions,
-            allowedDocumentIds,
-            SearchLimit,
-            ct);
+        var hits = new List<RagSearchHit>();
+        if (financeContext is not null)
+            hits.Add(financeContext);
+
+        if (documents.Count > 0)
+        {
+            var allowedPermissions = _user.Permissions.ToArray();
+            var allowedDocumentIds = documents.Select(document => document.DocumentId).ToArray();
+            var retrievalQuestion = BuildRetrievalQuestion(question.Trim(), history);
+            var embedding = (await _openAi.CreateEmbeddingsAsync([retrievalQuestion], ct)).Single();
+            hits.AddRange(await _vectorStore.SearchAsync(
+                _org.OrganizationId,
+                embedding,
+                allowedPermissions,
+                allowedDocumentIds,
+                SearchLimit,
+                ct));
+        }
 
         if (hits.Count == 0)
         {
@@ -193,6 +203,220 @@ public sealed class RagService : IRagService
             .ToList();
 
         return new RagAnswerDto(answer, sources);
+    }
+
+    private async Task<RagSearchHit?> BuildFinanceJournalContextAsync(
+        string question,
+        CancellationToken ct)
+    {
+        if (!ShouldUseFinanceJournalData(question))
+            return null;
+
+        if (!_user.IsAdmin &&
+            !_user.Permissions.Contains(PermissionKeys.GlAccess) &&
+            !_user.Permissions.Contains(PermissionKeys.GlJournalView))
+        {
+            return new RagSearchHit(
+                Guid.Empty,
+                "Live ERP finance data",
+                0,
+                "The user asked for live journal data, but the current user does not have General Ledger access.",
+                0d);
+        }
+
+        var dateRange = InferDateRange(question);
+        var entryQuery = _db.JournalEntries
+            .AsNoTracking()
+            .Where(entry =>
+                entry.OrganizationId == _org.OrganizationId &&
+                !entry.IsDeleted);
+
+        if (dateRange.From.HasValue)
+            entryQuery = entryQuery.Where(entry => entry.EntryDate >= dateRange.From.Value);
+        if (dateRange.To.HasValue)
+            entryQuery = entryQuery.Where(entry => entry.EntryDate < dateRange.To.Value);
+
+        var totalEntryCount = await entryQuery.CountAsync(ct);
+        var statusSummary = await entryQuery
+            .GroupBy(entry => entry.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                Count = group.Count(),
+                Debit = group.Sum(entry => entry.TotalDebit),
+                Credit = group.Sum(entry => entry.TotalCredit)
+            })
+            .OrderBy(item => item.Status)
+            .ToListAsync(ct);
+
+        var typeSummary = await entryQuery
+            .GroupBy(entry => entry.JournalType)
+            .Select(group => new
+            {
+                JournalType = group.Key,
+                Count = group.Count(),
+                Debit = group.Sum(entry => entry.TotalDebit),
+                Credit = group.Sum(entry => entry.TotalCredit)
+            })
+            .OrderByDescending(item => item.Debit)
+            .Take(12)
+            .ToListAsync(ct);
+
+        var recentEntries = await entryQuery
+            .OrderByDescending(entry => entry.EntryDate)
+            .ThenByDescending(entry => entry.CreatedAt)
+            .Select(entry => new
+            {
+                entry.Id,
+                entry.EntryNumber,
+                entry.EntryDate,
+                entry.Description,
+                entry.Reference,
+                entry.JournalType,
+                entry.Status,
+                entry.Currency,
+                entry.TotalDebit,
+                entry.TotalCredit
+            })
+            .Take(FinanceJournalEntryLimit)
+            .ToListAsync(ct);
+
+        var entryIds = recentEntries.Select(entry => entry.Id).ToArray();
+        var recentLines = await _db.JournalLines
+            .AsNoTracking()
+            .Where(line => entryIds.Contains(line.JournalEntryId) && !line.IsDeleted)
+            .Join(_db.Accounts.AsNoTracking(),
+                line => line.AccountId,
+                account => account.Id,
+                (line, account) => new
+                {
+                    line.JournalEntryId,
+                    line.LineOrder,
+                    line.Description,
+                    line.Debit,
+                    line.Credit,
+                    account.AccountNumber,
+                    AccountName = account.Name
+                })
+            .OrderBy(line => line.JournalEntryId)
+            .ThenBy(line => line.LineOrder)
+            .Take(FinanceJournalLineLimit)
+            .ToListAsync(ct);
+
+        var accountSummaryRaw = await _db.JournalLines
+            .AsNoTracking()
+            .Where(line => !line.IsDeleted)
+            .Join(entryQuery,
+                line => line.JournalEntryId,
+                entry => entry.Id,
+                (line, entry) => line)
+            .Join(_db.Accounts.AsNoTracking(),
+                line => line.AccountId,
+                account => account.Id,
+                (line, account) => new
+                {
+                    account.AccountNumber,
+                    AccountName = account.Name,
+                    line.Debit,
+                    line.Credit
+                })
+            .GroupBy(line => new { line.AccountNumber, line.AccountName })
+            .Select(group => new
+            {
+                group.Key.AccountNumber,
+                group.Key.AccountName,
+                Debit = group.Sum(line => line.Debit),
+                Credit = group.Sum(line => line.Credit),
+                Net = group.Sum(line => line.Debit - line.Credit)
+            })
+            .ToListAsync(ct);
+        var accountSummary = accountSummaryRaw
+            .OrderByDescending(item => Math.Abs(item.Net))
+            .Take(15)
+            .ToList();
+
+        var context = new StringBuilder();
+        context.AppendLine("Live ERP finance data from JournalEntry and JournalLine tables.");
+        context.AppendLine($"OrganizationId: {_org.OrganizationId}");
+        context.AppendLine($"Question: {question}");
+        context.AppendLine(dateRange.From.HasValue || dateRange.To.HasValue
+            ? $"Date filter: entries from {dateRange.From?.ToString("yyyy-MM-dd") ?? "beginning"} to before {dateRange.To?.ToString("yyyy-MM-dd") ?? "now"}."
+            : "Date filter: none; using all journal entries for summaries and the most recent entries for detail.");
+        context.AppendLine($"Total matching journal entries: {totalEntryCount}");
+        context.AppendLine();
+
+        context.AppendLine("Status summary:");
+        foreach (var item in statusSummary)
+            context.AppendLine($"- {item.Status}: count {item.Count}, debit {item.Debit:0.00}, credit {item.Credit:0.00}");
+        context.AppendLine();
+
+        context.AppendLine("Journal type summary:");
+        foreach (var item in typeSummary)
+            context.AppendLine($"- {item.JournalType}: count {item.Count}, debit {item.Debit:0.00}, credit {item.Credit:0.00}");
+        context.AppendLine();
+
+        context.AppendLine("Top accounts by absolute net movement:");
+        foreach (var item in accountSummary)
+            context.AppendLine($"- {item.AccountNumber} {item.AccountName}: debit {item.Debit:0.00}, credit {item.Credit:0.00}, net debit-minus-credit {item.Net:0.00}");
+        context.AppendLine();
+
+        context.AppendLine($"Most recent journal entries, limited to {FinanceJournalEntryLimit}:");
+        foreach (var entry in recentEntries)
+        {
+            context.AppendLine(
+                $"- {entry.EntryNumber} | {entry.EntryDate:yyyy-MM-dd} | {entry.Status} | {entry.JournalType} | {entry.Currency} | debit {entry.TotalDebit:0.00} | credit {entry.TotalCredit:0.00} | ref {entry.Reference} | {entry.Description}");
+            foreach (var line in recentLines.Where(line => line.JournalEntryId == entry.Id).Take(8))
+            {
+                context.AppendLine(
+                    $"  - line {line.LineOrder}: {line.AccountNumber} {line.AccountName}; debit {line.Debit:0.00}; credit {line.Credit:0.00}; {line.Description}");
+            }
+        }
+
+        return new RagSearchHit(
+            Guid.Empty,
+            "Live ERP finance data",
+            0,
+            context.ToString(),
+            0d);
+    }
+
+    private static bool ShouldUseFinanceJournalData(string question)
+    {
+        var normalized = question.ToLowerInvariant();
+        string[] financeTerms =
+        [
+            "journal", "ledger", "gl", "general ledger", "debit", "credit",
+            "posted", "posting", "trial balance", "account balance",
+            "finance", "financial", "revenue", "expense", "income", "cash",
+            "account", "balance sheet", "profit", "loss", "p&l",
+            "receivable", "payable", "asset", "liability", "equity", "cogs",
+            "cost of goods sold", "sales"
+        ];
+        return financeTerms.Any(term => normalized.Contains(term));
+    }
+
+    private static (DateTime? From, DateTime? To) InferDateRange(string question)
+    {
+        var today = DateTime.UtcNow.Date;
+        var normalized = question.ToLowerInvariant();
+
+        if (normalized.Contains("today"))
+            return (today, today.AddDays(1));
+        if (normalized.Contains("yesterday"))
+            return (today.AddDays(-1), today);
+        if (normalized.Contains("this month"))
+            return (new DateTime(today.Year, today.Month, 1), new DateTime(today.Year, today.Month, 1).AddMonths(1));
+        if (normalized.Contains("last month"))
+        {
+            var start = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+            return (start, start.AddMonths(1));
+        }
+        if (normalized.Contains("this year"))
+            return (new DateTime(today.Year, 1, 1), new DateTime(today.Year + 1, 1, 1));
+        if (normalized.Contains("last year"))
+            return (new DateTime(today.Year - 1, 1, 1), new DateTime(today.Year, 1, 1));
+
+        return (null, null);
     }
 
     private IQueryable<RagDocumentDto> GetVisibleDocumentsQuery()
