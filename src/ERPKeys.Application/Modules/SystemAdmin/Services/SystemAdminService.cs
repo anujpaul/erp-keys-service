@@ -107,9 +107,23 @@ public class SystemAdminService : ISystemAdminService
             req.AddressLine1, req.AddressLine2, req.City, req.State, req.PostalCode, req.Country);
 
         var currentRoles = user.UserRoles.Select(r => r.RoleId).ToHashSet();
-        var newRoles     = (req.RoleIds ?? []).ToHashSet();
-        foreach (var r in newRoles.Except(currentRoles)) user.AssignRole(r);
-        foreach (var r in currentRoles.Except(newRoles)) user.RemoveRole(r);
+        var newRoles     = (req.RoleIds ?? []).Distinct().ToHashSet();
+
+        var rolesToAdd = newRoles.Except(currentRoles).ToArray();
+        foreach (var roleId in rolesToAdd)
+            _db.UserRoles.Add(new UserRole(user.Id, roleId));
+
+        var rolesToRemove = currentRoles.Except(newRoles).ToArray();
+        if (rolesToRemove.Length > 0)
+        {
+            var userRolesToRemove = await _db.UserRoles
+                .Where(userRole =>
+                    userRole.UserId == user.Id &&
+                    rolesToRemove.Contains(userRole.RoleId))
+                .ToListAsync(ct);
+            foreach (var userRole in userRolesToRemove)
+                _db.UserRoles.Remove(userRole);
+        }
 
         AddUserAudit(user, "Update", oldValues, new
         {
