@@ -124,9 +124,21 @@ public class AccountsPayableController : ControllerBase
     }
 
     [HttpPost("purchase-orders/{id:guid}/generate-invoice")]
-    public async Task<IActionResult> GenerateInvoice(Guid id, [FromQuery] string vendorInvoiceRef, CancellationToken ct)
+    [Authorize(Policy = PermissionKeys.ApInvoiceManage)]
+    public async Task<IActionResult> GenerateInvoice(
+        Guid id,
+        [FromBody] GenerateAPInvoiceRequest req,
+        CancellationToken ct)
     {
-        try { return Ok(await _svc.GenerateInvoiceFromPOAsync(id, vendorInvoiceRef, ct)); }
+        try { return Ok(await _svc.GenerateInvoiceFromPOAsync(id, req, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("purchase-orders/{id:guid}/invoiceable-lines")]
+    [Authorize(Policy = PermissionKeys.ApInvoiceManage)]
+    public async Task<IActionResult> GetInvoiceableLines(Guid id, CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetInvoiceablePOLinesAsync(id, ct)); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 

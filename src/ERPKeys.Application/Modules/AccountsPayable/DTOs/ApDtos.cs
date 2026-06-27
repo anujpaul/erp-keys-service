@@ -125,6 +125,22 @@ public record APInvoiceDto(
     Guid? LinkedPrepaymentInvoiceId, string? LinkedPrepaymentNumber,
     int DaysOutstanding, DateTime CreatedAt);
 
+public record InvoiceablePOLineDto(
+    Guid LineId,
+    string ProductCode,
+    string Description,
+    string UnitOfMeasure,
+    decimal ReceivedQty,
+    decimal InvoicedQty,
+    decimal AvailableQty,
+    decimal UnitCost,
+    decimal TaxRate);
+
+public record GenerateAPInvoiceLineRequest(Guid LineId, decimal Quantity);
+
+public record GenerateAPInvoiceRequest(
+    IReadOnlyList<GenerateAPInvoiceLineRequest> Lines);
+
 public record CreateAPInvoiceRequest(
     Guid VendorId, DateTime InvoiceDate, DateTime DueDate,
     string Description, string VendorInvoiceRef,

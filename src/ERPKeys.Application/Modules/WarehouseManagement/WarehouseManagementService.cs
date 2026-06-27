@@ -3,6 +3,8 @@ using ERPKeys.Application.Modules.WarehouseManagement.DTOs;
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using ERPKeys.Domain.Modules.ProductManagement;
+using ERPKeys.Application.Modules.AccountsPayable.DTOs;
+using ERPKeys.Application.Modules.AccountsPayable.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace ERPKeys.Application.Modules.WarehouseManagement;
@@ -11,11 +13,16 @@ public class WarehouseManagementService : IWarehouseManagementService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
+    private readonly IAccountsPayableService _accountsPayable;
 
-    public WarehouseManagementService(IAppDbContext db, ICurrentOrganizationService org)
+    public WarehouseManagementService(
+        IAppDbContext db,
+        ICurrentOrganizationService org,
+        IAccountsPayableService accountsPayable)
     {
         _db = db;
         _org = org;
+        _accountsPayable = accountsPayable;
     }
 
     // ── Warehouses ──────────────────────────────────────────────────────────
@@ -206,7 +213,8 @@ public class WarehouseManagementService : IWarehouseManagementService
         int line = 1;
         foreach (var l in dto.Lines)
             order.Lines.Add(new InboundOrderLine(order.Id, line++, l.ProductId, l.ProductName,
-                l.OrderedQuantity, l.UnitOfMeasure, l.ProductSku, l.LocationId, l.LotNumber, l.ExpiryDate));
+                l.OrderedQuantity, l.UnitOfMeasure, l.ProductSku, l.LocationId, l.LotNumber,
+                l.ExpiryDate, purchaseOrderLineId: l.PurchaseOrderLineId));
 
         _db.InboundOrders.Add(order);
         await _db.SaveChangesAsync();
@@ -224,6 +232,42 @@ public class WarehouseManagementService : IWarehouseManagementService
         var order = await _db.InboundOrders.Include(o => o.Lines)
             .FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null) return false;
+
+        if (order.PurchaseOrderId.HasValue)
+        {
+            var selected = lines.Where(line => line.Quantity > 0).ToList();
+            if (selected.Count == 0)
+                throw new InvalidOperationException("Enter a positive quantity for at least one inbound line.");
+
+            var mappedLines = selected.Select(request =>
+            {
+                var inboundLine = order.Lines.FirstOrDefault(line => line.Id == request.LineId)
+                    ?? throw new InvalidOperationException("Inbound order line not found.");
+                var purchaseOrderLineId = inboundLine.PurchaseOrderLineId
+                    ?? throw new InvalidOperationException(
+                        "The inbound line is not linked to a purchase order line.");
+                var locationId = request.LocationId ?? inboundLine.LocationId
+                    ?? throw new InvalidOperationException(
+                        $"A receiving location is required for line {inboundLine.LineNumber}.");
+                return new { PurchaseOrderLineId = purchaseOrderLineId, request.Quantity, LocationId = locationId };
+            }).ToList();
+
+            var locationIds = mappedLines.Select(line => line.LocationId).Distinct().ToList();
+            if (locationIds.Count != 1)
+                throw new InvalidOperationException(
+                    "All lines in one PO receipt must use the same receiving location.");
+
+            await _accountsPayable.RecordReceiptAsync(
+                order.PurchaseOrderId.Value,
+                new RecordReceiptRequest(
+                    mappedLines.Select(line =>
+                        new ReceiveLineRequest(line.PurchaseOrderLineId, line.Quantity)).ToList(),
+                    order.WarehouseId,
+                    locationIds[0],
+                    DateTime.UtcNow.Date,
+                    $"Received from inbound order {order.OrderNumber}"));
+            return true;
+        }
 
         foreach (var r in lines)
         {
@@ -513,7 +557,7 @@ public class WarehouseManagementService : IWarehouseManagementService
         o.OrderNumber, o.PurchaseOrderId, o.VendorId, o.VendorName,
         o.ExpectedDate, o.ReceivedDate, o.Status.ToString(), o.Notes,
         o.Lines.Select(l => new InboundOrderLineDto(
-            l.Id, l.LineNumber, l.ProductId, l.ProductName, l.ProductSku,
+            l.Id, l.LineNumber, l.PurchaseOrderLineId, l.ProductId, l.ProductName, l.ProductSku,
             l.LocationId, l.Location?.Code, l.OrderedQuantity, l.ReceivedQuantity,
             l.UnitOfMeasure, l.LotNumber, l.ExpiryDate, l.Notes)).ToList());
 

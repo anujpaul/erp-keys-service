@@ -66,6 +66,8 @@ public class APInvoice : BaseEntity
     public Vendor?        Vendor                  { get; private set; }
     public PurchaseOrder? PurchaseOrder           { get; private set; }
     public APInvoice?     LinkedPrepaymentInvoice { get; private set; }
+    private readonly List<APInvoiceLine> _lines = [];
+    public IReadOnlyCollection<APInvoiceLine> Lines => _lines.AsReadOnly();
 
     // ── Computed ──────────────────────────────────────────────────────────────
     public decimal OutstandingAmount =>
@@ -103,6 +105,22 @@ public class APInvoice : BaseEntity
         MatchStatus = invoiceType == APInvoiceType.Prepayment
             ? ThreeWayMatchStatus.NotMatched    // will stay NotMatched — Approve() allows it
             : ThreeWayMatchStatus.NotMatched;
+    }
+
+    public APInvoiceLine AddPurchaseOrderLine(
+        Guid purchaseOrderLineId,
+        decimal quantity,
+        decimal unitCost,
+        decimal taxRate)
+    {
+        if (!PurchaseOrderId.HasValue || InvoiceType != APInvoiceType.Standard)
+            throw new InvalidOperationException("Only standard purchase order invoices can have PO lines.");
+        if (_lines.Any(line => line.PurchaseOrderLineId == purchaseOrderLineId))
+            throw new InvalidOperationException("A purchase order line can only appear once on an invoice.");
+
+        var line = new APInvoiceLine(Id, purchaseOrderLineId, quantity, unitCost, taxRate);
+        _lines.Add(line);
+        return line;
     }
 
     // ── Three-Way Match ───────────────────────────────────────────────────────

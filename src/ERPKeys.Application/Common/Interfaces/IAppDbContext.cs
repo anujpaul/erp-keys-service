@@ -100,6 +100,7 @@ public interface IAppDbContext
     DbSet<PurchaseOrderReceipt>     PurchaseOrderReceipts     { get; }
     DbSet<PurchaseOrderReceiptLine> PurchaseOrderReceiptLines { get; }
     DbSet<APInvoice>                APInvoices                { get; }
+    DbSet<APInvoiceLine>            APInvoiceLines            { get; }
     DbSet<APPayment>                APPayments                { get; }
 
     // P2P additions

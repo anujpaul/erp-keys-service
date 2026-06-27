@@ -31,6 +31,8 @@ public interface IGeneralLedgerService
     Task<FiscalPeriodDto> UpdatePeriodAsync(Guid fiscalYearId, Guid periodId, UpdatePeriodRequest req, CancellationToken ct = default);
     Task DeletePeriodAsync(Guid fiscalYearId, Guid periodId, CancellationToken ct = default);
     Task ClosePeriodAsync(Guid periodId, CancellationToken ct = default);
+    Task<FiscalPeriodStatusUpdateDto> UpdatePeriodStatusAsync(
+        Guid periodId, UpdateFiscalPeriodStatusRequest req, CancellationToken ct = default);
     Task<FiscalPeriodDto?> GetCurrentPeriodAsync(CancellationToken ct = default);
 
     // Chart of Accounts
@@ -423,6 +425,10 @@ public class GeneralLedgerService : IGeneralLedgerService
             .FirstOrDefaultAsync(y => y.Id == fiscalYearId && !y.IsDeleted, ct)
             ?? throw new InvalidOperationException("Fiscal year not found.");
 
+        if (await _db.JournalEntries.AnyAsync(j => j.FiscalPeriod!.FiscalYearId == fiscalYearId && !j.IsDeleted, ct))
+            throw new InvalidOperationException(
+                "Cannot regenerate periods for a fiscal year that has journal entries.");
+
         // 1. Wipe existing periods from DB
         var existing = await _db.FiscalPeriods.Where(p => p.FiscalYearId == fiscalYearId).ToListAsync(ct);
         _db.FiscalPeriods.RemoveRange(existing);
@@ -499,12 +505,55 @@ public class GeneralLedgerService : IGeneralLedgerService
         return periods.Select(ToPeriodDto);
     }
 
-    public async Task ClosePeriodAsync(Guid periodId, CancellationToken ct = default)
+    public Task ClosePeriodAsync(Guid periodId, CancellationToken ct = default)
+        => UpdatePeriodStatusAsync(
+            periodId,
+            new UpdateFiscalPeriodStatusRequest(FiscalPeriodStatus.Closed.ToString(), true),
+            ct);
+
+    public async Task<FiscalPeriodStatusUpdateDto> UpdatePeriodStatusAsync(
+        Guid periodId,
+        UpdateFiscalPeriodStatusRequest req,
+        CancellationToken ct = default)
     {
-        var period = await _db.FiscalPeriods.FirstOrDefaultAsync(p => p.Id == periodId && !p.IsDeleted, ct)
+        if (!Enum.TryParse<FiscalPeriodStatus>(req.Status, ignoreCase: true, out var requestedStatus))
+            throw new InvalidOperationException(
+                "Invalid fiscal period status. Valid values are Open, Closed, and PermanentlyClosed.");
+
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .FirstOrDefaultAsync(p => p.Id == periodId && !p.IsDeleted, ct)
             ?? throw new InvalidOperationException("Period not found.");
-        period.Close();
+
+        var fiscalYearPeriods = await _db.FiscalPeriods
+            .Where(p => p.FiscalYearId == period.FiscalYearId && !p.IsDeleted)
+            .OrderBy(p => p.PeriodNumber)
+            .ToListAsync(ct);
+
+        FiscalPeriodStatusValidator.ValidateStatusChange(fiscalYearPeriods, periodId, requestedStatus);
+
+        var unpostedCount = 0;
+        if (requestedStatus is FiscalPeriodStatus.Closed or FiscalPeriodStatus.PermanentlyClosed)
+        {
+            unpostedCount = await _db.JournalEntries.CountAsync(
+                j => j.FiscalPeriodId == periodId
+                    && j.Status == JournalEntryStatus.Draft
+                    && !j.IsDeleted,
+                ct);
+
+            if (unpostedCount > 0 && !req.ConfirmCloseWithUnpostedEntries)
+            {
+                return new FiscalPeriodStatusUpdateDto(
+                    ToPeriodDto(period),
+                    unpostedCount,
+                    $"This period has {unpostedCount} draft journal entr{(unpostedCount == 1 ? "y" : "ies")}.");
+            }
+        }
+
+        period.ChangeStatus(requestedStatus);
         await _db.SaveChangesAsync(ct);
+
+        return new FiscalPeriodStatusUpdateDto(ToPeriodDto(period), unpostedCount, null);
     }
 
     public async Task<FiscalPeriodDto?> GetCurrentPeriodAsync(CancellationToken ct = default)

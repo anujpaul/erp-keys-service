@@ -5,6 +5,7 @@ using ERPKeys.Application.Modules.AccountsPayable.DTOs;
 using ERPKeys.Application.Modules.InventoryManagement.Services;
 using ERPKeys.Domain.Modules.AccountsPayable;
 using ERPKeys.Domain.Modules.GeneralLedger;
+using ERPKeys.Domain.Modules.WarehouseManagement;
 using Microsoft.EntityFrameworkCore;
 
 namespace ERPKeys.Application.Modules.AccountsPayable.Services;
@@ -33,7 +34,8 @@ public interface IAccountsPayableService
     // AP Invoices
     Task<IEnumerable<APInvoiceDto>> GetInvoicesAsync(Guid? vendorId = null, CancellationToken ct = default);
     Task<APInvoiceDto> CreateInvoiceAsync(CreateAPInvoiceRequest req, CancellationToken ct = default);
-    Task<APInvoiceDto> GenerateInvoiceFromPOAsync(Guid poId, string vendorInvoiceRef, CancellationToken ct = default);
+    Task<IReadOnlyList<InvoiceablePOLineDto>> GetInvoiceablePOLinesAsync(Guid poId, CancellationToken ct = default);
+    Task<APInvoiceDto> GenerateInvoiceFromPOAsync(Guid poId, GenerateAPInvoiceRequest req, CancellationToken ct = default);
     Task<APInvoiceDto> CreatePrepaymentInvoiceAsync(CreatePrepaymentInvoiceRequest req, CancellationToken ct = default);
     Task<ThreeWayMatchDto> RunThreeWayMatchAsync(Guid invoiceId, CancellationToken ct = default);
     Task<APInvoiceDto> BypassMatchAsync(Guid invoiceId, string reason, CancellationToken ct = default);
@@ -319,6 +321,20 @@ public class AccountsPayableService : IAccountsPayableService
 
         var count = await _db.PurchaseOrderReceipts.CountAsync(ct) + 1;
         var receiptDate = req.ReceivedDate?.Date ?? DateTime.UtcNow.Date;
+        var inboundOrder = await _db.InboundOrders
+            .Include(order => order.Lines)
+            .FirstOrDefaultAsync(order => order.PurchaseOrderId == po.Id, ct);
+        if (inboundOrder is not null)
+        {
+            if (inboundOrder.Status == InboundOrderStatus.Cancelled)
+                throw new InvalidOperationException("The linked inbound order is cancelled.");
+            if (inboundOrder.Status == InboundOrderStatus.Completed)
+                throw new InvalidOperationException("The linked inbound order is already completed.");
+            if (inboundOrder.Status == InboundOrderStatus.Draft)
+                inboundOrder.Confirm();
+            if (inboundOrder.Status is InboundOrderStatus.Confirmed or InboundOrderStatus.InTransit)
+                inboundOrder.StartReceiving();
+        }
         var receipt = new PurchaseOrderReceipt(
             po.OrganizationId, po.Id,
             $"GRN-{count:D6}", receiptDate, req.WarehouseId,
@@ -332,6 +348,9 @@ public class AccountsPayableService : IAccountsPayableService
             poLine.Receive(lineReq.Qty);
             receipt.AddLine(poLine.Id, lineReq.Qty);
 
+            var inboundLine = inboundOrder?.Lines.FirstOrDefault(line =>
+                line.PurchaseOrderLineId == poLine.Id);
+            inboundLine?.Receive(lineReq.Qty, req.WarehouseLocationId);
         }
 
         await _inventoryPosting.PostReceiptAsync(
@@ -352,6 +371,9 @@ public class AccountsPayableService : IAccountsPayableService
             ct);
 
         po.UpdateReceiptStatus();
+        if (inboundOrder is not null
+            && inboundOrder.Lines.All(line => line.ReceivedQuantity >= line.OrderedQuantity))
+            inboundOrder.Complete(receiptDate);
         _db.PurchaseOrderReceipts.Add(receipt);
         _audit.Add("AP", "Goods Received", po.Id, "PurchaseOrder", null, new
         {
@@ -394,6 +416,7 @@ public class AccountsPayableService : IAccountsPayableService
         var oldStatus = po.Status.ToString();
         await RemoveOutstandingPurchaseOrderInventoryAsync(po, ct);
         po.Close();
+        await CancelOpenInboundOrderAsync(po.Id, ct);
         _audit.Add("AP", "Closed", po.Id, "PurchaseOrder",
             new { Status = oldStatus }, new { Status = po.Status.ToString() });
         await _db.SaveChangesAsync(ct);
@@ -405,6 +428,7 @@ public class AccountsPayableService : IAccountsPayableService
         var oldStatus = po.Status.ToString();
         await RemoveOutstandingPurchaseOrderInventoryAsync(po, ct);
         po.Cancel();
+        await CancelOpenInboundOrderAsync(po.Id, ct);
         _audit.Add("AP", "Cancelled", po.Id, "PurchaseOrder",
             new { Status = oldStatus }, new { Status = po.Status.ToString() });
         await _db.SaveChangesAsync(ct);
@@ -437,7 +461,46 @@ public class AccountsPayableService : IAccountsPayableService
         return ToAPInvoiceDto(created);
     }
 
-    public async Task<APInvoiceDto> GenerateInvoiceFromPOAsync(Guid poId, string vendorInvoiceRef, CancellationToken ct = default)
+    public async Task<IReadOnlyList<InvoiceablePOLineDto>> GetInvoiceablePOLinesAsync(
+        Guid poId,
+        CancellationToken ct = default)
+    {
+        var po = await _db.PurchaseOrders
+            .Include(order => order.Lines)
+            .FirstOrDefaultAsync(order => order.Id == poId && !order.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Purchase order not found.");
+
+        var lineIds = po.Lines.Select(line => line.Id).ToList();
+        var invoicedByLine = await _db.APInvoiceLines
+            .Where(line => lineIds.Contains(line.PurchaseOrderLineId)
+                && line.APInvoice!.Status != APInvoiceStatus.Voided)
+            .GroupBy(line => line.PurchaseOrderLineId)
+            .Select(group => new { LineId = group.Key, Quantity = group.Sum(line => line.Quantity) })
+            .ToDictionaryAsync(item => item.LineId, item => item.Quantity, ct);
+
+        return po.Lines
+            .OrderBy(line => line.CreatedAt)
+            .Select(line =>
+            {
+                var invoicedQty = invoicedByLine.GetValueOrDefault(line.Id);
+                return new InvoiceablePOLineDto(
+                    line.Id,
+                    line.ProductCode,
+                    line.Description,
+                    line.UnitOfMeasure,
+                    line.ReceivedQty,
+                    invoicedQty,
+                    Math.Max(0, line.ReceivedQty - invoicedQty),
+                    line.UnitCost,
+                    line.TaxRate);
+            })
+            .ToList();
+    }
+
+    public async Task<APInvoiceDto> GenerateInvoiceFromPOAsync(
+        Guid poId,
+        GenerateAPInvoiceRequest req,
+        CancellationToken ct = default)
     {
         var po = await _db.PurchaseOrders
             .Include(o => o.Vendor).Include(o => o.Lines)
@@ -451,31 +514,60 @@ public class AccountsPayableService : IAccountsPayableService
         if (po.InvoiceStatus == POInvoiceStatus.FullyInvoiced)
             throw new InvalidOperationException("All received goods have already been invoiced.");
 
-        var receivedValue      = po.Lines.Sum(l => Math.Round(l.ReceivedQty * l.UnitCost, 4));
-        var receivedTax        = po.Lines.Sum(l => Math.Round(l.ReceivedQty * l.UnitCost * l.TaxRate / 100, 4));
-        var uninvoicedSubTotal = receivedValue - po.InvoicedAmount;
-        var invoiceSubTotal    = Math.Round(uninvoicedSubTotal / (1 + (receivedTax > 0 && receivedValue > 0 ? receivedTax / receivedValue : 0)), 4);
-        var invoiceTax         = Math.Round(uninvoicedSubTotal - invoiceSubTotal, 4);
+        if (req.Lines is null || req.Lines.Count == 0)
+            throw new InvalidOperationException("Select at least one purchase order line to invoice.");
+        if (req.Lines.GroupBy(line => line.LineId).Any(group => group.Count() > 1))
+            throw new InvalidOperationException("Each purchase order line may only be selected once.");
 
-        if (uninvoicedSubTotal <= 0)
-            throw new InvalidOperationException("No uninvoiced received value to invoice.");
+        var requestedLines = req.Lines.Where(line => line.Quantity > 0).ToList();
+        if (requestedLines.Count == 0)
+            throw new InvalidOperationException("Enter a positive invoice quantity for at least one line.");
+
+        var poLineIds = po.Lines.Select(line => line.Id).ToList();
+        var invoicedByLine = await _db.APInvoiceLines
+            .Where(line => poLineIds.Contains(line.PurchaseOrderLineId)
+                && line.APInvoice!.Status != APInvoiceStatus.Voided)
+            .GroupBy(line => line.PurchaseOrderLineId)
+            .Select(group => new { LineId = group.Key, Quantity = group.Sum(line => line.Quantity) })
+            .ToDictionaryAsync(item => item.LineId, item => item.Quantity, ct);
+
+        var selected = new List<(PurchaseOrderLine Line, decimal Quantity)>();
+        foreach (var requestLine in requestedLines)
+        {
+            var poLine = po.Lines.FirstOrDefault(line => line.Id == requestLine.LineId)
+                ?? throw new InvalidOperationException("An invoice line does not belong to this purchase order.");
+            InvoiceQuantityValidator.Validate(
+                requestLine.Quantity,
+                poLine.ReceivedQty,
+                invoicedByLine.GetValueOrDefault(poLine.Id),
+                poLine.ProductCode);
+            selected.Add((poLine, requestLine.Quantity));
+        }
+
+        var invoiceSubTotal = selected.Sum(item =>
+            Math.Round(item.Quantity * item.Line.UnitCost, 4));
+        var invoiceTax = selected.Sum(item =>
+            Math.Round(item.Quantity * item.Line.UnitCost * item.Line.TaxRate / 100m, 4));
+        var invoiceTotal = invoiceSubTotal + invoiceTax;
 
         var vendor  = po.Vendor!;
         var dueDate = DateTime.UtcNow.Date.AddDays(vendor.PaymentTermsDays);
         var count   = await _db.APInvoices.CountAsync(ct) + 1;
-
-        var previouslyInvoiced = po.InvoicedAmount; // before recording this invoice
-
-        var inv = new APInvoice(_org.OrganizationId, $"APINV-{count:D6}", po.VendorId,
+        var invoiceNumber = $"APINV-{count:D6}";
+        var inv = new APInvoice(_org.OrganizationId, invoiceNumber, po.VendorId,
             DateTime.UtcNow.Date, dueDate,
-            $"Invoice for {po.PONumber} (received goods)", vendorInvoiceRef,
+            $"Invoice for {po.PONumber} (received goods)", invoiceNumber,
             invoiceSubTotal, invoiceTax, po.Id);
 
-        _db.APInvoices.Add(inv);
-        po.RecordInvoice(uninvoicedSubTotal);
+        foreach (var item in selected)
+            inv.AddPurchaseOrderLine(
+                item.Line.Id, item.Quantity, item.Line.UnitCost, item.Line.TaxRate);
 
-        // Auto-run three-way match
-        inv.RunThreeWayMatch(receivedValue, previouslyInvoiced, tolerancePct: 2m);
+        _db.APInvoices.Add(inv);
+        po.RecordInvoice(invoiceTotal);
+
+        // Quantity is matched line-by-line above; price comes directly from the PO.
+        inv.RunThreeWayMatch(invoiceSubTotal, 0, tolerancePct: 2m);
 
         await _db.SaveChangesAsync(ct);
 
@@ -573,7 +665,9 @@ public class AccountsPayableService : IAccountsPayableService
 
     public async Task ApproveInvoiceAsync(Guid id, CancellationToken ct = default)
     {
-        var inv = await _db.APInvoices.FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted, ct)
+        var inv = await _db.APInvoices
+            .Include(i => i.PurchaseOrder)
+            .FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
         inv.Approve();
         var journal = await CreateInvoiceJournalAsync(inv, ct);
@@ -598,6 +692,8 @@ public class AccountsPayableService : IAccountsPayableService
         }
 
         inv.Void();
+        if (inv.InvoiceType == APInvoiceType.Standard && inv.PurchaseOrder is not null)
+            inv.PurchaseOrder.ReverseInvoice(inv.TotalAmount);
         await _db.SaveChangesAsync(ct);
     }
 
@@ -1092,6 +1188,7 @@ public class AccountsPayableService : IAccountsPayableService
 
     private async Task AddPurchaseOrderToInventoryAsync(PurchaseOrder po, CancellationToken ct)
     {
+        await EnsureInboundOrderAsync(po, ct);
         await _inventoryPosting.PostPurchaseOrderAsync(
             po.OrganizationId,
             po.Id,
@@ -1101,6 +1198,70 @@ public class AccountsPayableService : IAccountsPayableService
                 .Select(line => new PurchaseInventoryLine(
                     line.ProductVariantId, line.OutstandingQty, line.UnitCost)),
             ct);
+    }
+
+    private async Task EnsureInboundOrderAsync(PurchaseOrder po, CancellationToken ct)
+    {
+        if (!po.WarehouseId.HasValue)
+            throw new InvalidOperationException(
+                "Select a destination warehouse before sending the purchase order.");
+
+        var warehouseIsActive = await _db.Warehouses.AnyAsync(
+            warehouse => warehouse.Id == po.WarehouseId.Value
+                && warehouse.OrganizationId == po.OrganizationId
+                && warehouse.IsActive,
+            ct);
+        if (!warehouseIsActive)
+            throw new InvalidOperationException("The destination warehouse is invalid or inactive.");
+
+        if (await _db.InboundOrders.AnyAsync(
+                order => order.PurchaseOrderId == po.Id,
+                ct))
+            return;
+
+        var inboundOrder = new InboundOrder(
+            po.OrganizationId,
+            po.WarehouseId.Value,
+            po.PONumber,
+            po.ExpectedDate?.Date ?? DateTime.UtcNow.Date,
+            po.Id,
+            po.VendorId,
+            po.Vendor?.Name,
+            $"Automatically created from purchase order {po.PONumber}.");
+
+        var lineNumber = 1;
+        foreach (var line in po.Lines
+                     .Where(line => !line.IsDeleted && line.OutstandingQty > 0)
+                     .OrderBy(line => line.CreatedAt))
+        {
+            inboundOrder.Lines.Add(new InboundOrderLine(
+                inboundOrder.Id,
+                lineNumber++,
+                line.ProductVariantId,
+                line.Description,
+                line.OutstandingQty,
+                line.UnitOfMeasure,
+                line.ProductCode,
+                purchaseOrderLineId: line.Id));
+        }
+
+        if (inboundOrder.Lines.Count == 0)
+            throw new InvalidOperationException(
+                "The purchase order has no outstanding lines to receive.");
+
+        inboundOrder.Confirm();
+        _db.InboundOrders.Add(inboundOrder);
+    }
+
+    private async Task CancelOpenInboundOrderAsync(Guid purchaseOrderId, CancellationToken ct)
+    {
+        var inboundOrder = await _db.InboundOrders.FirstOrDefaultAsync(
+            order => order.PurchaseOrderId == purchaseOrderId,
+            ct);
+        if (inboundOrder is not null
+            && inboundOrder.Status is not InboundOrderStatus.Completed
+            && inboundOrder.Status is not InboundOrderStatus.Cancelled)
+            inboundOrder.Cancel();
     }
 
     private async Task RemoveOutstandingPurchaseOrderInventoryAsync(PurchaseOrder po, CancellationToken ct)

@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626221815_AddAPInvoiceLines")]
+    partial class AddAPInvoiceLines
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -7841,10 +7844,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_inbound_orders");
 
-                    b.HasIndex("PurchaseOrderId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_inbound_orders_purchase_order_id");
-
                     b.HasIndex("WarehouseId")
                         .HasDatabaseName("ix_inbound_orders_warehouse_id");
 
@@ -7915,10 +7914,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("product_sku");
 
-                    b.Property<Guid?>("PurchaseOrderLineId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("purchase_order_line_id");
-
                     b.Property<decimal>("ReceivedQuantity")
                         .HasColumnType("decimal(18,4)")
                         .HasColumnName("received_quantity");
@@ -7941,9 +7936,6 @@ namespace ERPKeys.Infrastructure.Migrations
 
                     b.HasIndex("LocationId")
                         .HasDatabaseName("ix_inbound_order_lines_location_id");
-
-                    b.HasIndex("PurchaseOrderLineId")
-                        .HasDatabaseName("ix_inbound_order_lines_purchase_order_line_id");
 
                     b.ToTable("inbound_order_lines", (string)null);
                 });
@@ -10024,17 +10016,9 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasForeignKey("LocationId")
                         .HasConstraintName("fk_inbound_order_lines_warehouse_locations_location_id");
 
-                    b.HasOne("ERPKeys.Domain.Modules.AccountsPayable.PurchaseOrderLine", "PurchaseOrderLine")
-                        .WithMany()
-                        .HasForeignKey("PurchaseOrderLineId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_inbound_order_lines_purchase_order_lines_purchase_order_lin");
-
                     b.Navigation("InboundOrder");
 
                     b.Navigation("Location");
-
-                    b.Navigation("PurchaseOrderLine");
                 });
 
             modelBuilder.Entity("ERPKeys.Domain.Modules.WarehouseManagement.OutboundOrder", b =>

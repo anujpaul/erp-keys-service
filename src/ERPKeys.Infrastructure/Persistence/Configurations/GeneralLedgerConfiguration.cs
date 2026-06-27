@@ -48,10 +48,19 @@ public class FiscalPeriodConfiguration : IEntityTypeConfiguration<FiscalPeriod>
 {
     public void Configure(EntityTypeBuilder<FiscalPeriod> b)
     {
-        b.ToTable("fiscal_periods");
+        b.ToTable("fiscal_periods", t =>
+        {
+            t.HasCheckConstraint(
+                "ck_fiscal_periods_period_number_range",
+                "period_number BETWEEN 1 AND 13");
+            t.HasCheckConstraint(
+                "ck_fiscal_periods_status",
+                "status IN ('Open', 'Closed', 'PermanentlyClosed')");
+        });
         b.HasKey(e => e.Id);
         b.Property(e => e.Name).HasMaxLength(100).IsRequired();
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+        b.HasIndex(e => new { e.FiscalYearId, e.PeriodNumber }).IsUnique();
         b.HasQueryFilter(e => !e.IsDeleted);
     }
 }

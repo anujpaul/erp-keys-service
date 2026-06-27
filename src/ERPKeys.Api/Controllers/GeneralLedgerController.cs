@@ -119,6 +119,7 @@ public class GeneralLedgerController : ControllerBase
     }
 
     [HttpGet("fiscal-years/{fyId:guid}/periods")]
+    [HttpGet("/api/fiscal-years/{fyId:guid}/periods")]
     public async Task<IActionResult> GetPeriods(Guid fyId, CancellationToken ct)
         => Ok(await _svc.GetPeriodsAsync(fyId, ct));
 
@@ -130,6 +131,7 @@ public class GeneralLedgerController : ControllerBase
     }
 
     [HttpPost("fiscal-years/{fyId:guid}/periods/generate")]
+    [HttpPost("/api/fiscal-years/{fyId:guid}/generate-periods")]
     public async Task<IActionResult> GeneratePeriods(Guid fyId, [FromBody] GeneratePeriodsRequest req, CancellationToken ct)
     {
         try { return Ok(await _svc.GeneratePeriodsAsync(fyId, req, ct)); }
@@ -154,6 +156,21 @@ public class GeneralLedgerController : ControllerBase
     public async Task<IActionResult> ClosePeriod(Guid id, CancellationToken ct)
     {
         try { await _svc.ClosePeriodAsync(id, ct); return NoContent(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPatch("fiscal-periods/{id:guid}/status")]
+    [HttpPatch("/api/fiscal-periods/{id:guid}/status")]
+    public async Task<IActionResult> UpdatePeriodStatus(
+        Guid id,
+        [FromBody] UpdateFiscalPeriodStatusRequest req,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await _svc.UpdatePeriodStatusAsync(id, req, ct);
+            return result.Warning is null ? Ok(result) : Conflict(result);
+        }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 

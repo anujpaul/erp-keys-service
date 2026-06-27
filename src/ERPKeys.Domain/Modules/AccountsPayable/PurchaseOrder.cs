@@ -234,6 +234,22 @@ public class PurchaseOrder : BaseEntity
         SetUpdated();
     }
 
+    public void ReverseInvoice(decimal invoicedAmount)
+    {
+        if (invoicedAmount <= 0)
+            throw new InvalidOperationException("Reversed invoice amount must be positive.");
+
+        InvoicedAmount = Math.Max(0, InvoicedAmount - invoicedAmount);
+        var receivedValue = _lines.Sum(l =>
+            Math.Round(l.ReceivedQty * l.UnitCost * (1 + l.TaxRate / 100), 4));
+        InvoiceStatus = InvoicedAmount <= 0.01m
+            ? POInvoiceStatus.NotInvoiced
+            : InvoicedAmount >= receivedValue - 0.01m
+                ? POInvoiceStatus.FullyInvoiced
+                : POInvoiceStatus.PartiallyInvoiced;
+        SetUpdated();
+    }
+
     private void RecalcTotals()
     {
         SubTotal   = _lines.Sum(l => Math.Round(l.OrderedQty * l.UnitCost, 4));

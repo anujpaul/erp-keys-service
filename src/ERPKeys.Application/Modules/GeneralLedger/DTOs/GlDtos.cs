@@ -93,6 +93,15 @@ public record FiscalYearDto(Guid Id, string Name, string Description,
 public record FiscalPeriodDto(Guid Id, Guid FiscalYearId, int PeriodNumber,
     string Name, DateTime StartDate, DateTime EndDate, string Status);
 
+public record UpdateFiscalPeriodStatusRequest(
+    string Status,
+    bool ConfirmCloseWithUnpostedEntries = false);
+
+public record FiscalPeriodStatusUpdateDto(
+    FiscalPeriodDto Period,
+    int UnpostedJournalEntryCount,
+    string? Warning);
+
 public record CreateFiscalYearRequest(
     Guid FiscalCalendarId,
     string Name, string Description,

@@ -19,6 +19,7 @@ public record InboundOrderDto(
 public record InboundOrderLineDto(
     Guid     Id,
     int      LineNumber,
+    Guid?    PurchaseOrderLineId,
     Guid     ProductId,
     string   ProductName,
     string?  ProductSku,
@@ -52,7 +53,8 @@ public record CreateInboundOrderLineDto(
     string?  ProductSku    = null,
     Guid?    LocationId    = null,
     string?  LotNumber     = null,
-    DateTime? ExpiryDate   = null
+    DateTime? ExpiryDate   = null,
+    Guid?    PurchaseOrderLineId = null
 );
 
 public record ReceiveInboundLineDto(

@@ -145,8 +145,29 @@ public class APInvoiceConfiguration : IEntityTypeConfiguration<APInvoice>
         b.Ignore(e => e.IsSubmittedForApproval);
         b.HasOne(e => e.Vendor).WithMany().HasForeignKey(e => e.VendorId);
         b.HasOne(e => e.PurchaseOrder).WithMany().HasForeignKey(e => e.PurchaseOrderId);
+        b.HasMany(e => e.Lines).WithOne(e => e.APInvoice)
+            .HasForeignKey(e => e.APInvoiceId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.InvoiceNumber }).IsUnique();
         // Query filter applied in AppDbContext.OnModelCreating
+    }
+}
+
+public class APInvoiceLineConfiguration : IEntityTypeConfiguration<APInvoiceLine>
+{
+    public void Configure(EntityTypeBuilder<APInvoiceLine> b)
+    {
+        b.ToTable("ap_invoice_lines");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Quantity).HasColumnType("numeric(18,4)");
+        b.Property(e => e.UnitCost).HasColumnType("numeric(18,4)");
+        b.Property(e => e.TaxRate).HasColumnType("numeric(8,4)");
+        b.Ignore(e => e.SubTotal);
+        b.Ignore(e => e.TaxAmount);
+        b.Ignore(e => e.Total);
+        b.HasOne(e => e.PurchaseOrderLine).WithMany()
+            .HasForeignKey(e => e.PurchaseOrderLineId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(e => new { e.APInvoiceId, e.PurchaseOrderLineId }).IsUnique();
+        b.HasQueryFilter(e => !e.IsDeleted);
     }
 }
 

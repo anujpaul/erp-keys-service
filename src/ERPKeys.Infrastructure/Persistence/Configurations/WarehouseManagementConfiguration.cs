@@ -112,6 +112,7 @@ public class InboundOrderConfiguration : IEntityTypeConfiguration<InboundOrder>
         b.Property(e => e.Notes).HasMaxLength(1000);
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.HasIndex(e => new { e.OrganizationId, e.OrderNumber }).IsUnique();
+        b.HasIndex(e => e.PurchaseOrderId).IsUnique();
         b.HasMany(e => e.Lines)
          .WithOne(l => l.InboundOrder)
          .HasForeignKey(l => l.InboundOrderId)
@@ -132,6 +133,9 @@ public class InboundOrderLineConfiguration : IEntityTypeConfiguration<InboundOrd
         b.Property(e => e.Notes).HasMaxLength(500);
         b.Property(e => e.OrderedQuantity).HasColumnType("decimal(18,4)");
         b.Property(e => e.ReceivedQuantity).HasColumnType("decimal(18,4)");
+        b.HasOne(e => e.PurchaseOrderLine).WithMany()
+            .HasForeignKey(e => e.PurchaseOrderLineId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

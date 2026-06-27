@@ -26,6 +26,7 @@ public static class DatabaseSeeder
         await SeedVendorsAsync(db, logger, orgId);
         await SeedSystemAdminAsync(db, logger, orgId);
         await RemoveLegacySystemAdminRoleAsync(db, logger);
+        await SeedFinancialDimension(db, logger, orgId);
     }
 
     // ── Default Organization ───────────────────────────────────────────────────
@@ -230,6 +231,25 @@ public static class DatabaseSeeder
         fy2026.GenerateMonthlyPeriods();
         db.FiscalYears.Add(fy2026);
 
+        await db.SaveChangesAsync();
+    }
+
+    // ── Financial Dimensions ──────────────────────────────────────────────────────────
+
+    private static async Task SeedFinancialDimension(AppDbContext db, ILogger logger, Guid orgId)
+    {
+        if (await db.FinancialDimensions.IgnoreQueryFilters().AnyAsync(f => f.OrganizationId == orgId)) return;
+        
+        logger.LogInformation("Seeding Financial Dimensions");
+
+        var financialDimension =
+            new FinancialDimension(orgId, "Retail", "Retail", "Track Retail stores responsibility");
+
+        var financialDimensionValue = new FinancialDimensionValue(financialDimension.Id, "code1", "name1", "description1");
+
+        db.FinancialDimensions.Add(financialDimension);
+        db.FinancialDimensionValues.Add(financialDimensionValue);
+        
         await db.SaveChangesAsync();
     }
 

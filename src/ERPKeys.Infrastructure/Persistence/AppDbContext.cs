@@ -104,6 +104,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<PurchaseOrderReceipt>      PurchaseOrderReceipts     => Set<PurchaseOrderReceipt>();
     public DbSet<PurchaseOrderReceiptLine>  PurchaseOrderReceiptLines => Set<PurchaseOrderReceiptLine>();
     public DbSet<APInvoice>                 APInvoices                => Set<APInvoice>();
+    public DbSet<APInvoiceLine>             APInvoiceLines            => Set<APInvoiceLine>();
     public DbSet<APPayment>                 APPayments                => Set<APPayment>();
     public DbSet<VendorCreditNote>          VendorCreditNotes         => Set<VendorCreditNote>();
     public DbSet<PaymentProposal>           PaymentProposals          => Set<PaymentProposal>();

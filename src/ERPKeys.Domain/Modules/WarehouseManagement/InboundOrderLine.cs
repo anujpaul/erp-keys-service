@@ -5,6 +5,7 @@ namespace ERPKeys.Domain.Modules.WarehouseManagement;
 public class InboundOrderLine : BaseEntity
 {
     public Guid    InboundOrderId     { get; private set; }
+    public Guid?   PurchaseOrderLineId{ get; private set; }
     public int     LineNumber         { get; private set; }
     public Guid    ProductId          { get; private set; }
     public string  ProductName        { get; private set; } = string.Empty;
@@ -19,13 +20,15 @@ public class InboundOrderLine : BaseEntity
 
     public InboundOrder?    InboundOrder { get; private set; }
     public WarehouseLocation? Location  { get; private set; }
+    public ERPKeys.Domain.Modules.AccountsPayable.PurchaseOrderLine? PurchaseOrderLine { get; private set; }
 
     private InboundOrderLine() { }
 
     public InboundOrderLine(Guid inboundOrderId, int lineNumber, Guid productId,
         string productName, decimal orderedQuantity, string unitOfMeasure = "EA",
         string? productSku = null, Guid? locationId = null,
-        string? lotNumber = null, DateTime? expiryDate = null, string? notes = null)
+        string? lotNumber = null, DateTime? expiryDate = null, string? notes = null,
+        Guid? purchaseOrderLineId = null)
     {
         InboundOrderId   = inboundOrderId;
         LineNumber        = lineNumber;
@@ -38,6 +41,7 @@ public class InboundOrderLine : BaseEntity
         LotNumber         = lotNumber;
         ExpiryDate        = expiryDate;
         Notes             = notes;
+        PurchaseOrderLineId = purchaseOrderLineId;
     }
 
     public void Receive(decimal quantity, Guid? locationId = null)
