@@ -65,6 +65,7 @@ public interface IAppDbContext
     DbSet<Account>       Accounts       { get; }
     DbSet<JournalEntry>  JournalEntries { get; }
     DbSet<JournalLine>   JournalLines   { get; }
+    DbSet<ChargeCode> ChargeCodes { get; }
     DbSet<GeneralJournalVoucherTemplate> GeneralJournalVoucherTemplates { get; }
     DbSet<AccrualScheme> AccrualSchemes { get; }
     DbSet<AccrualSchemeAllocation> AccrualSchemeAllocations { get; }

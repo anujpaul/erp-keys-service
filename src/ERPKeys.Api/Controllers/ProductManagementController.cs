@@ -95,9 +95,19 @@ public class ProductManagementController : ControllerBase
     }
 
     [HttpPost("products/{id:guid}/status/{status}")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
     public async Task<IActionResult> ChangeProductStatus(Guid id, string status, CancellationToken ct)
     {
         await _pm.ChangeProductStatusAsync(id, status, ct);
+        return NoContent();
+    }
+
+    [HttpPut("products/{id:guid}/sales-tax-group")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
+    public async Task<IActionResult> SetSalesTaxGroup(
+        Guid id, [FromBody] SetSalesTaxGroupRequest req, CancellationToken ct)
+    {
+        await _pm.SetSalesTaxGroupAsync(id, req.SalesTaxGroup, ct);
         return NoContent();
     }
 

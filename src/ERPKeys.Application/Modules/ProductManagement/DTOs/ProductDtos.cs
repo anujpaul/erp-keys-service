@@ -82,6 +82,7 @@ public record ProductDto(
     decimal BaseCost,
     decimal EffectiveTaxRate,       // resolved: override if set, else category rate
     decimal? TaxRateOverride,       // null = inherited from category
+    string? SalesTaxGroup,
     decimal CategoryTaxRate,        // the category's default rate (for display)
     string? CategoryTaxCode,        // e.g. CLOTHING, FOOTWEAR
     string Currency,
@@ -107,7 +108,9 @@ public record CreateProductRequest(
     string? Description = null,
     string? Tags = null,
     string Currency = "USD",
-    decimal? TaxRateOverride = null   // leave null to inherit from category
+    decimal? TaxRateOverride = null,   // leave null to inherit from category
+    string? SalesTaxGroup = null,
+    string Status = "New"
 );
 
 public record UpdateProductRequest(
@@ -124,6 +127,8 @@ public record UpdateProductRequest(
     string? ImageUrl,
     decimal? TaxRateOverride = null   // leave null to inherit from category
 );
+
+public record SetSalesTaxGroupRequest(string? SalesTaxGroup);
 
 // ── Variant ───────────────────────────────────────────────────────────────────
 

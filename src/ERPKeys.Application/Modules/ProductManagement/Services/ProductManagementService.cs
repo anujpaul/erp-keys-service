@@ -26,6 +26,7 @@ public interface IProductManagementService
     Task<ProductDto> CreateProductAsync(CreateProductRequest req, CancellationToken ct = default);
     Task UpdateProductAsync(Guid id, UpdateProductRequest req, CancellationToken ct = default);
     Task ChangeProductStatusAsync(Guid id, string status, CancellationToken ct = default);
+    Task SetSalesTaxGroupAsync(Guid id, string? salesTaxGroup, CancellationToken ct = default);
 
     // Variants
     Task<ProductVariantDto> AddVariantAsync(Guid productId, CreateVariantRequest req, CancellationToken ct = default);
@@ -230,12 +231,15 @@ public class ProductManagementService : IProductManagementService
             throw new InvalidOperationException($"Invalid product type '{req.ProductType}'.");
         if (!Enum.TryParse<GenderTarget>(req.GenderTarget, out var gt))
             throw new InvalidOperationException($"Invalid gender target '{req.GenderTarget}'.");
+        if (!Enum.TryParse<ProductStatus>(req.Status, true, out var status))
+            throw new InvalidOperationException($"Invalid product status '{req.Status}'.");
 
         var product = new Domain.Modules.ProductManagement.Product(
             _org.OrganizationId, req.Sku, req.Name, req.CategoryId,
             pt, req.BasePrice, req.BaseCost,
             req.UnitOfMeasure, req.BrandId, gt, req.Description, req.Tags, req.Currency,
-            taxRateOverride: req.TaxRateOverride);
+            taxRateOverride: req.TaxRateOverride, salesTaxGroup: req.SalesTaxGroup,
+            status: status);
 
         _db.CatalogProducts.Add(product);
         await _db.SaveChangesAsync(ct);
@@ -263,13 +267,23 @@ public class ProductManagementService : IProductManagementService
     {
         var p = await _db.CatalogProducts.FindAsync(new object[] { id }, ct)
             ?? throw new InvalidOperationException("Product not found.");
-        switch (status.ToLowerInvariant())
+        switch (status.Trim().ToLowerInvariant())
         {
             case "active":       p.Activate();     break;
-            case "inactive":     p.Deactivate();   break;
             case "discontinued": p.Discontinue();  break;
+            case "exiting":      p.MarkExiting();  break;
+            case "new":          p.MarkNew();      break;
             default: throw new InvalidOperationException($"Unknown status '{status}'.");
         }
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task SetSalesTaxGroupAsync(
+        Guid id, string? salesTaxGroup, CancellationToken ct = default)
+    {
+        var product = await _db.CatalogProducts.FindAsync(new object[] { id }, ct)
+            ?? throw new InvalidOperationException("Product not found.");
+        product.SetSalesTaxGroup(salesTaxGroup);
         await _db.SaveChangesAsync(ct);
     }
 
@@ -450,6 +464,7 @@ public class ProductManagementService : IProductManagementService
             p.UnitOfMeasure, p.BasePrice, p.BaseCost,
             EffectiveTaxRate: p.EffectiveTaxRate(catTaxRate),
             TaxRateOverride:  p.TaxRateOverride,
+            SalesTaxGroup:    p.SalesTaxGroup,
             CategoryTaxRate:  catTaxRate,
             CategoryTaxCode:  p.Category?.TaxCode,
             p.Currency,

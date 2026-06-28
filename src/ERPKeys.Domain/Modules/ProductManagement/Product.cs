@@ -2,7 +2,7 @@ using ERPKeys.Domain.Common;
 
 namespace ERPKeys.Domain.Modules.ProductManagement;
 
-public enum ProductStatus   { Active, Inactive, Discontinued }
+public enum ProductStatus   { Active, Discontinued, Exiting, New }
 public enum ProductType     { Clothing, Footwear, Accessory, Food, PersonalCare, Other }
 public enum GenderTarget    { Men, Women, Unisex, Kids, None }
 
@@ -27,6 +27,7 @@ public class Product : BaseEntity
     /// (e.g. a food product in the Clothing category, or a tax-exempt gift card).
     /// </summary>
     public decimal? TaxRateOverride { get; private set; }
+    public string? SalesTaxGroup { get; private set; }
 
     public string Currency { get; private set; } = "USD";
     public string? Tags { get; private set; }           // comma-separated
@@ -51,7 +52,8 @@ public class Product : BaseEntity
         string unitOfMeasure = "Each", Guid? brandId = null,
         GenderTarget genderTarget = GenderTarget.Unisex,
         string? description = null, string? tags = null, string currency = "USD",
-        decimal? taxRateOverride = null)
+        decimal? taxRateOverride = null, string? salesTaxGroup = null,
+        ProductStatus status = ProductStatus.Active)
     {
         OrganizationId  = organizationId;
         Sku             = sku.Trim().ToUpperInvariant();
@@ -61,12 +63,14 @@ public class Product : BaseEntity
         BasePrice       = basePrice;
         BaseCost        = baseCost;
         TaxRateOverride = taxRateOverride;
+        SalesTaxGroup   = NormalizeSalesTaxGroup(salesTaxGroup);
         UnitOfMeasure   = unitOfMeasure;
         BrandId         = brandId;
         GenderTarget    = genderTarget;
         Description     = description;
         Tags            = tags;
         Currency        = currency;
+        Status          = status;
     }
 
     public void Update(string name, string? description, string? longDescription,
@@ -114,11 +118,20 @@ public class Product : BaseEntity
     }
 
     public void SetPreferredVendor(Guid? vendorId) { PreferredVendorId = vendorId; SetUpdated(); }
+    public void SetSalesTaxGroup(string? salesTaxGroup)
+    {
+        SalesTaxGroup = NormalizeSalesTaxGroup(salesTaxGroup);
+        SetUpdated();
+    }
 
     public void Discontinue() { Status = ProductStatus.Discontinued; SetUpdated(); }
     public void Activate()    { Status = ProductStatus.Active;        SetUpdated(); }
-    public void Deactivate()  { Status = ProductStatus.Inactive;      SetUpdated(); }
+    public void MarkExiting() { Status = ProductStatus.Exiting;       SetUpdated(); }
+    public void MarkNew()     { Status = ProductStatus.New;           SetUpdated(); }
 
     public void MarkExported() { IsExported = true; ExportedAt = DateTime.UtcNow; SetUpdated(); }
     public void ResetExport()  { IsExported = false; ExportedAt = null; SetUpdated(); }
+
+    private static string? NormalizeSalesTaxGroup(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
 }

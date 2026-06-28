@@ -56,6 +56,7 @@ public class CatalogProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(e => e.BaseCost).HasColumnType("numeric(18,4)");
         // Nullable override — null means "inherit from category"
         b.Property(e => e.TaxRateOverride).HasColumnType("numeric(8,4)").IsRequired(false);
+        b.Property(e => e.SalesTaxGroup).HasMaxLength(50);
         b.Property(e => e.Currency).HasMaxLength(3);
         b.Property(e => e.Tags).HasMaxLength(500);
         b.Property(e => e.ImageUrl).HasMaxLength(500);

@@ -1,6 +1,8 @@
 using ERPKeys.Application.Modules.AccountsPayable.DTOs;
 using ERPKeys.Application.Modules.AccountsPayable.Services;
 using ERPKeys.Application.Common.Security;
+using ERPKeys.Application.Modules.Charges;
+using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +16,14 @@ namespace ERPKeys.Api.Controllers;
 public class AccountsPayableController : ControllerBase
 {
     private readonly IAccountsPayableService _svc;
-    public AccountsPayableController(IAccountsPayableService svc) => _svc = svc;
+    private readonly IChargeCodeService _chargeCodes;
+    public AccountsPayableController(
+        IAccountsPayableService svc,
+        IChargeCodeService chargeCodes)
+    {
+        _svc = svc;
+        _chargeCodes = chargeCodes;
+    }
 
     [HttpGet("parameters")]
     public async Task<IActionResult> GetParameters(CancellationToken ct)
@@ -29,6 +38,82 @@ public class AccountsPayableController : ControllerBase
         try { return Ok(await _svc.UpdateParametersAsync(req, ct)); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
+
+    [HttpGet("charge-codes")]
+    public async Task<IActionResult> GetChargeCodes(
+        [FromQuery] bool activeOnly, CancellationToken ct) =>
+        Ok(await _chargeCodes.GetAsync(
+            ChargeModule.AccountsPayable, activeOnly, ct));
+
+    [HttpGet("charge-code-options")]
+    public async Task<IActionResult> GetChargeCodeOptions(CancellationToken ct) =>
+        Ok(await _chargeCodes.GetOptionsAsync(ct));
+
+    [HttpPost("charge-codes")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
+    public async Task<IActionResult> CreateChargeCode(
+        [FromBody] CreateChargeCodeRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return StatusCode(201, await _chargeCodes.CreateAsync(
+                ChargeModule.AccountsPayable, request, ct));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("charge-codes/{id:guid}")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
+    public async Task<IActionResult> UpdateChargeCode(
+        Guid id, [FromBody] UpdateChargeCodeRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _chargeCodes.UpdateAsync(
+                ChargeModule.AccountsPayable, id, request, ct));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("charge-codes/{id:guid}/activate")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
+    public async Task<IActionResult> ActivateChargeCode(
+        Guid id, string action, CancellationToken ct)
+    {
+        try
+        {
+            await _chargeCodes.SetActiveAsync(ChargeModule.AccountsPayable, id, true, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("charge-codes/{id:guid}/deactivate")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
+    public async Task<IActionResult> DeActivateChargeCode(
+        Guid id, string action, CancellationToken ct)
+    {
+        try
+        {
+            await _chargeCodes.SetActiveAsync(
+                ChargeModule.AccountsPayable, id, false, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
 
     // ── Vendors ───────────────────────────────────────────────────────────────
 

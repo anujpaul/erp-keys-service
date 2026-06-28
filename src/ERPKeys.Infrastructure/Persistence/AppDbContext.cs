@@ -67,6 +67,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Account>      Accounts      => Set<Account>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine>  JournalLines  => Set<JournalLine>();
+    public DbSet<ChargeCode> ChargeCodes => Set<ChargeCode>();
     public DbSet<GeneralJournalVoucherTemplate> GeneralJournalVoucherTemplates =>
         Set<GeneralJournalVoucherTemplate>();
     public DbSet<AccrualScheme> AccrualSchemes => Set<AccrualScheme>();
@@ -391,6 +392,8 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.Entity<PaymentProcessorConfiguration>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<MethodOfPayment>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<ChargeCode>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
 
         // Fixed Assets — org-scoped (no soft-delete, disposals are status-based)
