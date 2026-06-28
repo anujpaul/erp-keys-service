@@ -16,6 +16,20 @@ public class AccountsPayableController : ControllerBase
     private readonly IAccountsPayableService _svc;
     public AccountsPayableController(IAccountsPayableService svc) => _svc = svc;
 
+    [HttpGet("parameters")]
+    public async Task<IActionResult> GetParameters(CancellationToken ct)
+        => Ok(await _svc.GetParametersAsync(ct));
+
+    [HttpPut("parameters")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
+    public async Task<IActionResult> UpdateParameters(
+        [FromBody] UpdateAccountsPayableParametersRequest req,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.UpdateParametersAsync(req, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     // ── Vendors ───────────────────────────────────────────────────────────────
 
     [HttpGet("vendors")]

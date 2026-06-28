@@ -37,11 +37,14 @@ public class PurchaseOrderLine : BaseEntity
         TaxRate = taxRate;
     }
 
-    public void Receive(decimal qty)
+    public void Receive(decimal qty, decimal maximumOverReceiptPercent = 0)
     {
         if (qty <= 0) throw new InvalidOperationException("Received quantity must be positive.");
-        if (ReceivedQty + qty > OrderedQty)
-            throw new InvalidOperationException("Cannot receive more than ordered quantity.");
+        var maximumQuantity = OrderedQty * (1 + maximumOverReceiptPercent / 100m);
+        if (ReceivedQty + qty > maximumQuantity + 0.0001m)
+            throw new InvalidOperationException(
+                $"Cannot receive more than {maximumQuantity:0.####} for this line " +
+                $"({maximumOverReceiptPercent:0.####}% over the ordered quantity).");
         ReceivedQty += qty;
         SetUpdated();
     }

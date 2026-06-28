@@ -12,6 +12,7 @@ using ERPKeys.Domain.Modules.SystemAdmin;
 using ERPKeys.Domain.Modules.Workflow;
 using ERPKeys.Domain.Modules.Expenses;
 using ERPKeys.Domain.Modules.WarehouseManagement;
+using ERPKeys.Domain.Modules.Payments;
 using ERPKeys.Domain.Modules.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -101,6 +102,7 @@ public interface IAppDbContext
     DbSet<PurchaseOrderReceiptLine> PurchaseOrderReceiptLines { get; }
     DbSet<APInvoice>                APInvoices                { get; }
     DbSet<APInvoiceLine>            APInvoiceLines            { get; }
+    DbSet<AccountsPayableParameters> AccountsPayableParameters { get; }
     DbSet<APPayment>                APPayments                { get; }
 
     // P2P additions
@@ -151,6 +153,10 @@ public interface IAppDbContext
     DbSet<BankReconciliation> BankReconciliations { get; }
     DbSet<CashJournal>       CashJournals       { get; }
     DbSet<CashJournalLine>   CashJournalLines   { get; }
+
+    // Shared Payments
+    DbSet<PaymentProcessorConfiguration> PaymentProcessorConfigurations { get; }
+    DbSet<MethodOfPayment> MethodsOfPayment { get; }
 
     // Fixed Assets
     DbSet<FixedAsset>        FixedAssets        { get; }

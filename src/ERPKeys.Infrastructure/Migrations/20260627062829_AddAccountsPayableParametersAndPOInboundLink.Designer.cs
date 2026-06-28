@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260627062829_AddAccountsPayableParametersAndPOInboundLink")]
+    partial class AddAccountsPayableParametersAndPOInboundLink
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5647,219 +5650,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.ToTable("organizations", (string)null);
                 });
 
-            modelBuilder.Entity("ERPKeys.Domain.Modules.Payments.MethodOfPayment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("AllowManualEntry")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_manual_entry");
-
-                    b.Property<bool>("AllowRefunds")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_refunds");
-
-                    b.Property<bool>("AutoCapture")
-                        .HasColumnType("boolean")
-                        .HasColumnName("auto_capture");
-
-                    b.Property<Guid?>("ClearingAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("clearing_account_id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("code");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CurrencyCode")
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasColumnName("currency_code");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<Guid?>("FeeExpenseAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("fee_expense_account_id");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("name");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("organization_id");
-
-                    b.Property<Guid?>("ProcessorConfigurationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("processor_configuration_id");
-
-                    b.Property<bool>("RequiresExternalAuthorization")
-                        .HasColumnType("boolean")
-                        .HasColumnName("requires_external_authorization");
-
-                    b.Property<Guid?>("SettlementBankAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("settlement_bank_account_id");
-
-                    b.Property<TimeOnly?>("SettlementCutoffTime")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("settlement_cutoff_time");
-
-                    b.Property<int>("SettlementDelayDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("settlement_delay_days");
-
-                    b.Property<string>("SettlementMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("settlement_mode");
-
-                    b.Property<string>("TenderType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("tender_type");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<string>("Usage")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("usage");
-
-                    b.HasKey("Id")
-                        .HasName("pk_methods_of_payment");
-
-                    b.HasIndex("ClearingAccountId")
-                        .HasDatabaseName("ix_methods_of_payment_clearing_account_id");
-
-                    b.HasIndex("FeeExpenseAccountId")
-                        .HasDatabaseName("ix_methods_of_payment_fee_expense_account_id");
-
-                    b.HasIndex("ProcessorConfigurationId")
-                        .HasDatabaseName("ix_methods_of_payment_processor_configuration_id");
-
-                    b.HasIndex("SettlementBankAccountId")
-                        .HasDatabaseName("ix_methods_of_payment_settlement_bank_account_id");
-
-                    b.HasIndex("OrganizationId", "Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_methods_of_payment_organization_id_code");
-
-                    b.ToTable("methods_of_payment", (string)null);
-                });
-
-            modelBuilder.Entity("ERPKeys.Domain.Modules.Payments.PaymentProcessorConfiguration", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("code");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CredentialSecretReference")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("credential_secret_reference");
-
-                    b.Property<string>("EndpointBaseUrl")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("endpoint_base_url");
-
-                    b.Property<string>("Environment")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("environment");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<string>("MerchantAccountReference")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("merchant_account_reference");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("name");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("organization_id");
-
-                    b.Property<string>("ProviderCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("provider_code");
-
-                    b.Property<int>("TimeoutSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("timeout_seconds");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_payment_processor_configurations");
-
-                    b.HasIndex("OrganizationId", "Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_payment_processor_configurations_organization_id_code");
-
-                    b.ToTable("payment_processor_configurations", (string)null);
-                });
-
             modelBuilder.Entity("ERPKeys.Domain.Modules.ProductManagement.Brand", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10069,41 +9859,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasConstraintName("fk_customer_loyalty_accounts_loyalty_programs_loyalty_program_");
 
                     b.Navigation("Program");
-                });
-
-            modelBuilder.Entity("ERPKeys.Domain.Modules.Payments.MethodOfPayment", b =>
-                {
-                    b.HasOne("ERPKeys.Domain.Modules.GeneralLedger.Account", "ClearingAccount")
-                        .WithMany()
-                        .HasForeignKey("ClearingAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_methods_of_payment_accounts_clearing_account_id");
-
-                    b.HasOne("ERPKeys.Domain.Modules.GeneralLedger.Account", "FeeExpenseAccount")
-                        .WithMany()
-                        .HasForeignKey("FeeExpenseAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_methods_of_payment_accounts_fee_expense_account_id");
-
-                    b.HasOne("ERPKeys.Domain.Modules.Payments.PaymentProcessorConfiguration", "ProcessorConfiguration")
-                        .WithMany()
-                        .HasForeignKey("ProcessorConfigurationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_methods_of_payment_payment_processor_configurations_process");
-
-                    b.HasOne("ERPKeys.Domain.Modules.CashBank.BankAccount", "SettlementBankAccount")
-                        .WithMany()
-                        .HasForeignKey("SettlementBankAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_methods_of_payment_bank_accounts_settlement_bank_account_id");
-
-                    b.Navigation("ClearingAccount");
-
-                    b.Navigation("FeeExpenseAccount");
-
-                    b.Navigation("ProcessorConfiguration");
-
-                    b.Navigation("SettlementBankAccount");
                 });
 
             modelBuilder.Entity("ERPKeys.Domain.Modules.ProductManagement.Category", b =>

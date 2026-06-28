@@ -171,6 +171,18 @@ public class APInvoiceLineConfiguration : IEntityTypeConfiguration<APInvoiceLine
     }
 }
 
+public class AccountsPayableParametersConfiguration : IEntityTypeConfiguration<AccountsPayableParameters>
+{
+    public void Configure(EntityTypeBuilder<AccountsPayableParameters> b)
+    {
+        b.ToTable("accounts_payable_parameters");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.MaximumOverReceiptPercent).HasColumnType("numeric(8,4)");
+        b.HasIndex(e => e.OrganizationId).IsUnique();
+        b.HasQueryFilter(e => !e.IsDeleted);
+    }
+}
+
 public class APPaymentConfiguration : IEntityTypeConfiguration<APPayment>
 {
     public void Configure(EntityTypeBuilder<APPayment> b)

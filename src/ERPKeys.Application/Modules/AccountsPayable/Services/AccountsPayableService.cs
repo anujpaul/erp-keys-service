@@ -12,6 +12,11 @@ namespace ERPKeys.Application.Modules.AccountsPayable.Services;
 
 public interface IAccountsPayableService
 {
+    Task<AccountsPayableParametersDto> GetParametersAsync(CancellationToken ct = default);
+    Task<AccountsPayableParametersDto> UpdateParametersAsync(
+        UpdateAccountsPayableParametersRequest req,
+        CancellationToken ct = default);
+
     // Vendors
     Task<IEnumerable<VendorDto>> GetVendorsAsync(CancellationToken ct = default);
     Task<VendorDto> CreateVendorAsync(CreateVendorRequest req, CancellationToken ct = default);
@@ -120,6 +125,50 @@ public class AccountsPayableService : IAccountsPayableService
         _org = org;
         _audit = audit;
         _inventoryPosting = inventoryPosting;
+    }
+
+    public async Task<AccountsPayableParametersDto> GetParametersAsync(
+        CancellationToken ct = default)
+    {
+        var parameters = await _db.AccountsPayableParameters.FirstOrDefaultAsync(ct);
+        return parameters is null
+            ? new AccountsPayableParametersDto(
+                Guid.Empty, _org.OrganizationId, false, 0)
+            : ToParametersDto(parameters);
+    }
+
+    public async Task<AccountsPayableParametersDto> UpdateParametersAsync(
+        UpdateAccountsPayableParametersRequest req,
+        CancellationToken ct = default)
+    {
+        var parameters = await _db.AccountsPayableParameters.FirstOrDefaultAsync(ct);
+        if (parameters is null)
+        {
+            parameters = new AccountsPayableParameters(_org.OrganizationId);
+            _db.AccountsPayableParameters.Add(parameters);
+        }
+
+        var before = new
+        {
+            parameters.AllowPurchaseOrderOverReceipt,
+            parameters.MaximumOverReceiptPercent
+        };
+        parameters.UpdateOverReceiptPolicy(
+            req.AllowPurchaseOrderOverReceipt,
+            req.MaximumOverReceiptPercent);
+        _audit.Add(
+            "AP",
+            "Parameters Updated",
+            parameters.Id,
+            nameof(AccountsPayableParameters),
+            before,
+            new
+            {
+                parameters.AllowPurchaseOrderOverReceipt,
+                parameters.MaximumOverReceiptPercent
+            });
+        await _db.SaveChangesAsync(ct);
+        return ToParametersDto(parameters);
     }
 
     // Vendors
@@ -315,8 +364,14 @@ public class AccountsPayableService : IAccountsPayableService
     public async Task<ReceiptDto> RecordReceiptAsync(Guid poId, RecordReceiptRequest req, CancellationToken ct = default)
     {
         var po = await LoadPOWithLines(poId, ct);
+        var maximumOverReceiptPercent = await GetMaximumOverReceiptPercentAsync(ct);
+        var canReceive = po.Status is not PurchaseOrderStatus.Draft
+            and not PurchaseOrderStatus.Closed
+            and not PurchaseOrderStatus.Cancelled
+            && po.Lines.Any(line =>
+                line.ReceivedQty < line.OrderedQty * (1 + maximumOverReceiptPercent / 100m) - 0.0001m);
 
-        if (!po.CanReceive)
+        if (!canReceive)
             throw new InvalidOperationException("This PO cannot receive more goods.");
 
         var count = await _db.PurchaseOrderReceipts.CountAsync(ct) + 1;
@@ -329,7 +384,7 @@ public class AccountsPayableService : IAccountsPayableService
             if (inboundOrder.Status == InboundOrderStatus.Cancelled)
                 throw new InvalidOperationException("The linked inbound order is cancelled.");
             if (inboundOrder.Status == InboundOrderStatus.Completed)
-                throw new InvalidOperationException("The linked inbound order is already completed.");
+                inboundOrder.ReopenForOverReceipt();
             if (inboundOrder.Status == InboundOrderStatus.Draft)
                 inboundOrder.Confirm();
             if (inboundOrder.Status is InboundOrderStatus.Confirmed or InboundOrderStatus.InTransit)
@@ -345,12 +400,15 @@ public class AccountsPayableService : IAccountsPayableService
             if (lineReq.Qty <= 0) continue;
             var poLine = po.Lines.FirstOrDefault(l => l.Id == lineReq.LineId)
                 ?? throw new InvalidOperationException($"PO line {lineReq.LineId} not found.");
-            poLine.Receive(lineReq.Qty);
+            poLine.Receive(lineReq.Qty, maximumOverReceiptPercent);
             receipt.AddLine(poLine.Id, lineReq.Qty);
 
             var inboundLine = inboundOrder?.Lines.FirstOrDefault(line =>
                 line.PurchaseOrderLineId == poLine.Id);
-            inboundLine?.Receive(lineReq.Qty, req.WarehouseLocationId);
+            inboundLine?.Receive(
+                lineReq.Qty,
+                req.WarehouseLocationId,
+                maximumOverReceiptPercent);
         }
 
         await _inventoryPosting.PostReceiptAsync(
@@ -710,7 +768,7 @@ public class AccountsPayableService : IAccountsPayableService
             p.Id, p.PaymentNumber, p.VendorId, p.Vendor?.Name ?? string.Empty,
             p.APInvoiceId, p.APInvoice?.InvoiceNumber ?? string.Empty,
             p.PaymentDate, p.Amount, p.PaymentMethod,
-            p.Reference, p.Status.ToString(), p.CreatedAt));
+            p.Reference, p.Status.ToString(), p.JournalEntryId, p.CreatedAt));
     }
 
     public async Task<APPaymentDto> CreatePaymentAsync(CreateAPPaymentRequest req, CancellationToken ct = default)
@@ -737,7 +795,7 @@ public class AccountsPayableService : IAccountsPayableService
             created.Vendor?.Name ?? string.Empty,
             created.APInvoiceId, created.APInvoice?.InvoiceNumber ?? string.Empty,
             created.PaymentDate, created.Amount, created.PaymentMethod,
-            created.Reference, created.Status.ToString(), created.CreatedAt);
+            created.Reference, created.Status.ToString(), created.JournalEntryId, created.CreatedAt);
     }
 
     // AP Aging Report
@@ -777,7 +835,9 @@ public class AccountsPayableService : IAccountsPayableService
 
     private async Task<PurchaseOrder> LoadPOWithLines(Guid id, CancellationToken ct)
     {
-        return await _db.PurchaseOrders.Include(o => o.Lines)
+        return await _db.PurchaseOrders
+            .Include(o => o.Vendor)
+            .Include(o => o.Lines)
             .FirstOrDefaultAsync(o => o.Id == id && !o.IsDeleted, ct)
             ?? throw new InvalidOperationException("Purchase order not found.");
     }
@@ -956,6 +1016,13 @@ public class AccountsPayableService : IAccountsPayableService
 
     private static VendorContactDto ToVendorContactDto(VendorContact c) =>
         new(c.Id, c.Name, c.Title, c.Email, c.Phone, c.Mobile, c.IsPrimary, c.Notes);
+    private static AccountsPayableParametersDto ToParametersDto(
+        AccountsPayableParameters parameters) =>
+        new(
+            parameters.Id,
+            parameters.OrganizationId,
+            parameters.AllowPurchaseOrderOverReceipt,
+            parameters.MaximumOverReceiptPercent);
     private static VendorDto ToVendorDto(Vendor v, decimal outstanding) =>
         new(v.Id, v.VendorNumber, v.Name,
             v.Email, v.Phone, v.BillingAddress, v.ShippingAddress,
@@ -999,7 +1066,7 @@ public class AccountsPayableService : IAccountsPayableService
             i.Status.ToString(), i.InvoiceType.ToString(), i.MatchStatus.ToString(),
             i.MatchNotes, i.BypassReason,
             i.LinkedPrepaymentInvoiceId, i.LinkedPrepaymentInvoice?.InvoiceNumber,
-            (int)(DateTime.UtcNow - i.InvoiceDate).TotalDays, i.CreatedAt);
+            (int)(DateTime.UtcNow - i.InvoiceDate).TotalDays, i.JournalEntryId, i.CreatedAt);
 
     // ── Purchase Requisitions ─────────────────────────────────────────────────
 
@@ -1262,6 +1329,20 @@ public class AccountsPayableService : IAccountsPayableService
             && inboundOrder.Status is not InboundOrderStatus.Completed
             && inboundOrder.Status is not InboundOrderStatus.Cancelled)
             inboundOrder.Cancel();
+    }
+
+    private async Task<decimal> GetMaximumOverReceiptPercentAsync(CancellationToken ct)
+    {
+        var parameters = await _db.AccountsPayableParameters
+            .Select(item => new
+            {
+                item.AllowPurchaseOrderOverReceipt,
+                item.MaximumOverReceiptPercent
+            })
+            .FirstOrDefaultAsync(ct);
+        return parameters?.AllowPurchaseOrderOverReceipt == true
+            ? parameters.MaximumOverReceiptPercent
+            : 0;
     }
 
     private async Task RemoveOutstandingPurchaseOrderInventoryAsync(PurchaseOrder po, CancellationToken ct)

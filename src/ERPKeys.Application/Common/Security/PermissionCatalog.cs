@@ -50,6 +50,8 @@ public static class PermissionKeys
     public const string WorkflowAccess = "workflow:access";
     public const string ExpenseAccess = "expense:access";
     public const string CashBankAccess = "cash-bank:access";
+    public const string PaymentMethodsView = "cash-bank.payment-method:view";
+    public const string PaymentMethodsManage = "cash-bank.payment-method:manage";
     public const string FixedAssetsAccess = "fixed-assets:access";
     public const string KnowledgeAccess = "knowledge:access";
     public const string KnowledgeManage = "knowledge:manage";
@@ -133,6 +135,8 @@ public static class PermissionCatalog
         P(PermissionKeys.WorkflowAccess, "Approvals", "Workflow", "Access", "Use approval inbox and workflow actions"),
         P(PermissionKeys.ExpenseAccess, "Expenses", "Expenses", "Access", "Use expense management"),
         P(PermissionKeys.CashBankAccess, "Cash and Bank", "Cash and bank", "Access", "Use cash and bank management"),
+        P(PermissionKeys.PaymentMethodsView, "Cash and Bank", "Methods of payment", "View", "View payment methods and processor setup"),
+        P(PermissionKeys.PaymentMethodsManage, "Cash and Bank", "Methods of payment", "Manage", "Maintain payment methods and processor setup"),
         P(PermissionKeys.FixedAssetsAccess, "Fixed Assets", "Fixed assets", "Access", "Use fixed asset management"),
         P(PermissionKeys.KnowledgeAccess, "Knowledge Assistant", "Knowledge base", "Access", "Ask questions against organization documents"),
         P(PermissionKeys.KnowledgeManage, "Knowledge Assistant", "Documents", "Manage", "Upload and remove knowledge-base documents"),

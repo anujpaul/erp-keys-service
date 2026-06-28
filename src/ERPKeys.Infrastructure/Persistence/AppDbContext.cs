@@ -14,6 +14,7 @@ using ERPKeys.Domain.Modules.CashBank;
 using ERPKeys.Domain.Modules.FixedAssets;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using ERPKeys.Domain.Modules.Rag;
+using ERPKeys.Domain.Modules.Payments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using PMProduct = ERPKeys.Domain.Modules.ProductManagement.Product;
@@ -105,6 +106,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<PurchaseOrderReceiptLine>  PurchaseOrderReceiptLines => Set<PurchaseOrderReceiptLine>();
     public DbSet<APInvoice>                 APInvoices                => Set<APInvoice>();
     public DbSet<APInvoiceLine>             APInvoiceLines            => Set<APInvoiceLine>();
+    public DbSet<AccountsPayableParameters> AccountsPayableParameters => Set<AccountsPayableParameters>();
     public DbSet<APPayment>                 APPayments                => Set<APPayment>();
     public DbSet<VendorCreditNote>          VendorCreditNotes         => Set<VendorCreditNote>();
     public DbSet<PaymentProposal>           PaymentProposals          => Set<PaymentProposal>();
@@ -144,6 +146,11 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<BankReconciliation> BankReconciliations => Set<BankReconciliation>();
     public DbSet<CashJournal>        CashJournals        => Set<CashJournal>();
     public DbSet<CashJournalLine>    CashJournalLines    => Set<CashJournalLine>();
+
+    // Shared Payments
+    public DbSet<PaymentProcessorConfiguration> PaymentProcessorConfigurations
+        => Set<PaymentProcessorConfiguration>();
+    public DbSet<MethodOfPayment> MethodsOfPayment => Set<MethodOfPayment>();
 
     // Fixed Assets
     public DbSet<FixedAsset>        FixedAssets        => Set<FixedAsset>();
@@ -381,6 +388,10 @@ public class AppDbContext : DbContext, IAppDbContext
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<CashJournalLine>()
             .HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<PaymentProcessorConfiguration>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<MethodOfPayment>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
 
         // Fixed Assets — org-scoped (no soft-delete, disposals are status-based)
         modelBuilder.Entity<FixedAsset>()

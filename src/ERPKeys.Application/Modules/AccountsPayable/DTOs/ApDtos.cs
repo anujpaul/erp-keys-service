@@ -80,6 +80,16 @@ public record PurchaseOrderDto(Guid Id, string PONumber, Guid VendorId, string V
     decimal InvoicedAmount, bool CanReceive, DateTime CreatedAt,
     IReadOnlyList<PurchaseOrderLineDto> Lines);
 
+public record AccountsPayableParametersDto(
+    Guid Id,
+    Guid OrganizationId,
+    bool AllowPurchaseOrderOverReceipt,
+    decimal MaximumOverReceiptPercent);
+
+public record UpdateAccountsPayableParametersRequest(
+    bool AllowPurchaseOrderOverReceipt,
+    decimal MaximumOverReceiptPercent);
+
 public record CreatePurchaseOrderRequest(
     Guid VendorId, DateTime OrderDate, string Description,
     string Currency = "USD", DateTime? ExpectedDate = null, Guid? WarehouseId = null);
@@ -123,7 +133,7 @@ public record APInvoiceDto(
     string Status, string InvoiceType, string MatchStatus,
     string? MatchNotes, string? BypassReason,
     Guid? LinkedPrepaymentInvoiceId, string? LinkedPrepaymentNumber,
-    int DaysOutstanding, DateTime CreatedAt);
+    int DaysOutstanding, Guid? JournalEntryId, DateTime CreatedAt);
 
 public record InvoiceablePOLineDto(
     Guid LineId,
@@ -166,7 +176,7 @@ public record ApplyPrepaymentRequest(Guid PrepaymentInvoiceId);
 public record APPaymentDto(Guid Id, string PaymentNumber, Guid VendorId,
     string VendorName, Guid APInvoiceId, string InvoiceNumber,
     DateTime PaymentDate, decimal Amount, string PaymentMethod,
-    string? Reference, string Status, DateTime CreatedAt);
+    string? Reference, string Status, Guid? JournalEntryId, DateTime CreatedAt);
 
 public record CreateAPPaymentRequest(
     Guid VendorId, Guid APInvoiceId, DateTime PaymentDate,

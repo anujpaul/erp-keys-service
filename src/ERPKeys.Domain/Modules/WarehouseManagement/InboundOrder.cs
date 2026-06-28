@@ -77,6 +77,15 @@ public class InboundOrder : BaseEntity
         SetUpdated();
     }
 
+    public void ReopenForOverReceipt()
+    {
+        if (Status != InboundOrderStatus.Completed)
+            throw new InvalidOperationException("Only completed inbound orders can be reopened.");
+        Status = InboundOrderStatus.Receiving;
+        ReceivedDate = null;
+        SetUpdated();
+    }
+
     public void Cancel()
     {
         if (Status == InboundOrderStatus.Completed)

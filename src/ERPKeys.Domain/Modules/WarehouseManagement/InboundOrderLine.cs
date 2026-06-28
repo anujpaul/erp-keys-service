@@ -44,12 +44,17 @@ public class InboundOrderLine : BaseEntity
         PurchaseOrderLineId = purchaseOrderLineId;
     }
 
-    public void Receive(decimal quantity, Guid? locationId = null)
+    public void Receive(
+        decimal quantity,
+        Guid? locationId = null,
+        decimal maximumOverReceiptPercent = 0)
     {
         if (quantity <= 0)
             throw new ArgumentException("Received quantity must be positive.");
-        if (ReceivedQuantity + quantity > OrderedQuantity)
-            throw new InvalidOperationException("Received quantity cannot exceed the ordered quantity.");
+        var maximumQuantity = OrderedQuantity * (1 + maximumOverReceiptPercent / 100m);
+        if (ReceivedQuantity + quantity > maximumQuantity + 0.0001m)
+            throw new InvalidOperationException(
+                $"Received quantity cannot exceed {maximumQuantity:0.####}.");
         ReceivedQuantity += quantity;
         if (locationId.HasValue) LocationId = locationId;
         SetUpdated();

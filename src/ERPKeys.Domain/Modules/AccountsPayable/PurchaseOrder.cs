@@ -83,6 +83,14 @@ public class PurchaseOrder : BaseEntity
                : anyReceived ? PurchaseOrderStatus.PartiallyReceived
                : PurchaseOrderStatus.Sent;
 
+        var receivedValue = _lines.Sum(l =>
+            Math.Round(l.ReceivedQty * l.UnitCost * (1 + l.TaxRate / 100), 4));
+        InvoiceStatus = InvoicedAmount <= 0.01m
+            ? POInvoiceStatus.NotInvoiced
+            : InvoicedAmount >= receivedValue - 0.01m
+                ? POInvoiceStatus.FullyInvoiced
+                : POInvoiceStatus.PartiallyInvoiced;
+
         SetUpdated();
     }
 
