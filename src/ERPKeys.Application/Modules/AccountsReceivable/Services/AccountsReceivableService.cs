@@ -22,6 +22,8 @@ public interface IAccountsReceivableService
     Task<IEnumerable<SalesOrderSummaryDto>> GetSalesOrdersAsync(string? status = null, Guid? customerId = null, CancellationToken ct = default);
     Task<SalesOrderDto?> GetSalesOrderAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<DocumentAuditDto>> GetSalesOrderHistoryAsync(Guid id, CancellationToken ct = default);
+    Task<PackingSlipDto> GetPackingSlipAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<ARInvoiceDto>> GetSalesOrderInvoicesAsync(Guid id, CancellationToken ct = default);
     Task<SalesOrderDto> CreateSalesOrderAsync(CreateSalesOrderRequest req, CancellationToken ct = default);
     Task<SalesOrderDto> AddSalesOrderLineAsync(Guid orderId, AddSalesOrderLineRequest req, CancellationToken ct = default);
     Task<SalesOrderDto> UpdateSalesOrderLineAsync(Guid orderId, Guid lineId, UpdateSalesOrderLineRequest req, CancellationToken ct = default);
@@ -453,6 +455,64 @@ public class AccountsReceivableService : IAccountsReceivableService
                 Lines = (req.Lines ?? []).Select(l => new { l.LineId, l.Quantity }).ToList()
             });
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<PackingSlipDto> GetPackingSlipAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var order = await _db.SalesOrders
+            .AsNoTracking()
+            .Include(o => o.Customer)
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == id && !o.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Sales order not found.");
+
+        var shippedLines = order.Lines
+            .Where(line => !line.IsDeleted && line.QuantityShipped > 0)
+            .Select(line => new PackingSlipLineDto(
+                line.Id, line.Sku, line.ProductName, line.VariantDescription,
+                line.UnitOfMeasure, line.Quantity, line.QuantityShipped))
+            .ToList();
+
+        if (shippedLines.Count == 0)
+            throw new InvalidOperationException(
+                "A packing slip is not available until the order has shipped.");
+
+        var shippingAddressRecord = await _db.CustomerAddresses
+            .AsNoTracking()
+            .Where(address =>
+                address.CustomerId == order.CustomerId &&
+                address.AddressType == AddressType.Shipping &&
+                !address.IsDeleted)
+            .OrderByDescending(address => address.IsPrimary)
+            .FirstOrDefaultAsync(ct);
+        var shippingAddress = shippingAddressRecord?.SingleLine
+            ?? order.Customer?.ShippingAddress;
+
+        return new PackingSlipDto(
+            order.Id, order.OrderNumber, order.Customer?.Name ?? string.Empty,
+            shippingAddress, order.ActualShipDate,
+            order.DeliveredAt, order.DeliveryReference, order.Status.ToString(),
+            shippedLines);
+    }
+
+    public async Task<IReadOnlyList<ARInvoiceDto>> GetSalesOrderInvoicesAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var orderExists = await _db.SalesOrders
+            .AsNoTracking()
+            .AnyAsync(order => order.Id == id && !order.IsDeleted, ct);
+        if (!orderExists)
+            throw new InvalidOperationException("Sales order not found.");
+
+        var invoices = await _db.ARInvoices
+            .AsNoTracking()
+            .Include(invoice => invoice.Customer)
+            .Include(invoice => invoice.SalesOrder)
+            .Where(invoice => invoice.SalesOrderId == id && !invoice.IsDeleted)
+            .OrderByDescending(invoice => invoice.InvoiceDate)
+            .ToListAsync(ct);
+        return invoices.Select(ToARInvoiceDto).ToList();
     }
 
     public async Task CancelSalesOrderAsync(Guid id, CancellationToken ct = default)

@@ -60,6 +60,20 @@ public class AccountsReceivableController : ControllerBase
     public async Task<IActionResult> GetSalesOrderHistory(Guid id, CancellationToken ct)
         => Ok(await _svc.GetSalesOrderHistoryAsync(id, ct));
 
+    [HttpGet("sales-orders/{id:guid}/packing-slip")]
+    public async Task<IActionResult> GetPackingSlip(Guid id, CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetPackingSlipAsync(id, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("sales-orders/{id:guid}/invoices")]
+    public async Task<IActionResult> GetSalesOrderInvoices(Guid id, CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetSalesOrderInvoicesAsync(id, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("sales-orders")]
     [Authorize(Policy = PermissionKeys.ArSalesOrderManage)]
     public async Task<IActionResult> CreateSalesOrder([FromBody] CreateSalesOrderRequest req, CancellationToken ct)

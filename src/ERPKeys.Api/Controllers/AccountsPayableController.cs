@@ -121,6 +121,13 @@ public class AccountsPayableController : ControllerBase
     public async Task<IActionResult> GetReceipts(Guid id, CancellationToken ct)
         => Ok(await _svc.GetReceiptsAsync(id, ct));
 
+    [HttpGet("purchase-orders/{id:guid}/invoices")]
+    public async Task<IActionResult> GetPurchaseOrderInvoices(Guid id, CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetPurchaseOrderInvoicesAsync(id, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("purchase-orders/{id:guid}/close")]
     [Authorize(Policy = PermissionKeys.ApPurchaseOrderApprove)]
     public async Task<IActionResult> Close(Guid id, CancellationToken ct)

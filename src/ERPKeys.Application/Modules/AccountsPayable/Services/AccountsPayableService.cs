@@ -33,6 +33,7 @@ public interface IAccountsPayableService
     Task SendPurchaseOrderAsync(Guid id, CancellationToken ct = default);
     Task<ReceiptDto> RecordReceiptAsync(Guid poId, RecordReceiptRequest req, CancellationToken ct = default);
     Task<IEnumerable<ReceiptDto>> GetReceiptsAsync(Guid poId, CancellationToken ct = default);
+    Task<IReadOnlyList<APInvoiceDto>> GetPurchaseOrderInvoicesAsync(Guid poId, CancellationToken ct = default);
     Task ClosePurchaseOrderAsync(Guid id, CancellationToken ct = default);
     Task CancelPurchaseOrderAsync(Guid id, CancellationToken ct = default);
 
@@ -466,6 +467,25 @@ public class AccountsPayableService : IAccountsPayableService
             .ToListAsync(ct);
 
         return receipts.Select(r => ToReceiptDto(r));
+    }
+
+    public async Task<IReadOnlyList<APInvoiceDto>> GetPurchaseOrderInvoicesAsync(
+        Guid poId, CancellationToken ct = default)
+    {
+        var orderExists = await _db.PurchaseOrders
+            .AsNoTracking()
+            .AnyAsync(order => order.Id == poId && !order.IsDeleted, ct);
+        if (!orderExists)
+            throw new InvalidOperationException("Purchase order not found.");
+
+        var invoices = await _db.APInvoices
+            .AsNoTracking()
+            .Include(invoice => invoice.Vendor)
+            .Include(invoice => invoice.PurchaseOrder)
+            .Where(invoice => invoice.PurchaseOrderId == poId && !invoice.IsDeleted)
+            .OrderByDescending(invoice => invoice.InvoiceDate)
+            .ToListAsync(ct);
+        return invoices.Select(ToAPInvoiceDto).ToList();
     }
 
     public async Task ClosePurchaseOrderAsync(Guid id, CancellationToken ct = default)

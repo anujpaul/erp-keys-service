@@ -101,6 +101,17 @@ public record ShipOrderRequest(
     IReadOnlyList<ShipOrderLineRequest>? Lines = null,
     string? TrackingNumber = null);
 
+public record PackingSlipLineDto(
+    Guid SalesOrderLineId, string Sku, string ProductName,
+    string? VariantDescription, string UnitOfMeasure,
+    decimal OrderedQuantity, decimal ShippedQuantity);
+
+public record PackingSlipDto(
+    Guid SalesOrderId, string OrderNumber, string CustomerName,
+    string? ShippingAddress, DateTime? ShippedDate,
+    DateTime? DeliveredAt, string? DeliveryReference, string Status,
+    IReadOnlyList<PackingSlipLineDto> Lines);
+
 public record ApplyDiscountRequest(decimal DiscountPct);
 
 // ── AR Invoice ────────────────────────────────────────────────────────────────
