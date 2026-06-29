@@ -461,6 +461,7 @@ public class DataManagementService : IDataManagementService
 
             if (!Enum.TryParse<ProductType>(GetOr(d, ProductFields.ProductType, "Other"), true, out var pt))  pt = ProductType.Other;
             if (!Enum.TryParse<GenderTarget>(GetOr(d, ProductFields.GenderTarget, "Unisex"), true, out var gt)) gt = GenderTarget.Unisex;
+            await using var transaction = await _db.BeginTransactionAsync(ct);
 
             var product = new PMProduct(orgId,
                 Get(d, ProductFields.Sku)!,
@@ -476,20 +477,25 @@ public class DataManagementService : IDataManagementService
                 GetDecimalN(d, ProductFields.TaxRate));  // optional per-product override; null = inherit from category
 
             _db.CatalogProducts.Add(product);
+            await _db.SaveChangesAsync(ct); // obtains the product's variant-number block
 
             // Optional variant
             var size = Get(d, ProductFields.VariantSize);
             if (!string.IsNullOrWhiteSpace(size))
-                product.AddVariant(size,
+            {
+                var variant = product.AddVariant(size,
                     Get(d, ProductFields.VariantColor),
                     Get(d, ProductFields.VariantMaterial),
                     Get(d, ProductFields.VariantBarcode),
                     GetDecimalN(d, ProductFields.VariantPriceOverride),
                     GetDecimalN(d, ProductFields.VariantCostOverride));
+                _db.ProductVariants.Add(variant);
+            }
 
             await _db.SaveChangesAsync(ct);
             row.MarkPromoted(product.Id);
             await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             return (success + 1, failed);
         }
         catch (Exception ex)

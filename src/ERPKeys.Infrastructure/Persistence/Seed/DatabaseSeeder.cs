@@ -396,11 +396,13 @@ public static class DatabaseSeeder
             var variantStocks = new List<(ProductVariant Variant, decimal Stock)>();
             foreach (var (size, color, material, barcode, stock) in variants)
             {
-                var variant = product.AddVariant(size, color, material, barcode);
                 var exists = await db.ProductVariants.IgnoreQueryFilters()
-                    .AnyAsync(v => v.Sku == variant.Sku && v.OrganizationId == orgId);
+                    .AnyAsync(v => v.ProductId == product.Id &&
+                        v.Size == size && v.Color == color && v.Material == material &&
+                        v.OrganizationId == orgId);
                 if (!exists)
                 {
+                    var variant = product.AddVariant(size, color, material, barcode);
                     db.ProductVariants.Add(variant);
                     variantStocks.Add((variant, stock));
                 }

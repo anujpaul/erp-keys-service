@@ -34,6 +34,9 @@ public class Product : BaseEntity
     public string? ImageUrl { get; private set; }       // primary image
     public ProductStatus Status { get; private set; } = ProductStatus.Active;
     public Guid? PreferredVendorId { get; private set; } // FK → Vendor (AP module)
+    public Guid? VariantAttributeDefinitionId { get; private set; }
+    public int VariantNumberBase { get; private set; }
+    public int NextVariantNumberOffset { get; private set; }
 
     // Export tracking
     public bool      IsExported { get; private set; }
@@ -41,6 +44,7 @@ public class Product : BaseEntity
 
     public Category? Category { get; private set; }
     public Brand? Brand { get; private set; }
+    public VariantAttributeDefinition? VariantAttributeDefinition { get; private set; }
 
     private readonly List<ProductVariant> _variants = new();
     public IReadOnlyCollection<ProductVariant> Variants => _variants.AsReadOnly();
@@ -53,7 +57,7 @@ public class Product : BaseEntity
         GenderTarget genderTarget = GenderTarget.Unisex,
         string? description = null, string? tags = null, string currency = "USD",
         decimal? taxRateOverride = null, string? salesTaxGroup = null,
-        ProductStatus status = ProductStatus.Active)
+        ProductStatus status = ProductStatus.Active, int variantNumberBase = 0)
     {
         OrganizationId  = organizationId;
         Sku             = sku.Trim().ToUpperInvariant();
@@ -71,6 +75,7 @@ public class Product : BaseEntity
         Tags            = tags;
         Currency        = currency;
         Status          = status;
+        VariantNumberBase = variantNumberBase;
     }
 
     public void Update(string name, string? description, string? longDescription,
@@ -104,20 +109,34 @@ public class Product : BaseEntity
     public ProductVariant AddVariant(string size, string? color, string? material,
         string? barcode = null, decimal? priceOverride = null, decimal? costOverride = null)
     {
-        // Build variant SKU: base-SKU + size + color abbreviation
-        var suffix = new[] { size, color?.Substring(0, Math.Min(3, color?.Length ?? 0)) }
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!.ToUpperInvariant().Replace(" ", ""));
-        var variantSku = $"{Sku}-{string.Join("-", suffix)}";
-
-        var variant = new ProductVariant(OrganizationId, Id, variantSku,
+        var variantNumber = AllocateVariantNumber();
+        var variant = new ProductVariant(OrganizationId, Id, variantNumber,
             size, color, material, barcode, priceOverride, costOverride);
         _variants.Add(variant);
         SetUpdated();
         return variant;
     }
 
+    private int AllocateVariantNumber()
+    {
+        if (VariantNumberBase is < 1_000_000 or > 9_999_000 ||
+            VariantNumberBase % 1_000 != 0)
+            throw new InvalidOperationException(
+                "The product does not have a valid variant number block.");
+        if (NextVariantNumberOffset >= 999)
+            throw new InvalidOperationException(
+                "This product has exhausted its 999 available variant numbers.");
+
+        NextVariantNumberOffset++;
+        return VariantNumberBase + NextVariantNumberOffset;
+    }
+
     public void SetPreferredVendor(Guid? vendorId) { PreferredVendorId = vendorId; SetUpdated(); }
+    public void SetVariantAttributeDefinition(Guid? definitionId)
+    {
+        VariantAttributeDefinitionId = definitionId;
+        SetUpdated();
+    }
     public void SetSalesTaxGroup(string? salesTaxGroup)
     {
         SalesTaxGroup = NormalizeSalesTaxGroup(salesTaxGroup);

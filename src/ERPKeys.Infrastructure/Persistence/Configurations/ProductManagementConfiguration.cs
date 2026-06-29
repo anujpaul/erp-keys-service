@@ -63,10 +63,19 @@ public class CatalogProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(e => e.ProductType).HasConversion<string>().HasMaxLength(30);
         b.Property(e => e.GenderTarget).HasConversion<string>().HasMaxLength(20);
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(e => e.VariantNumberBase)
+            .HasDefaultValueSql("nextval('variant_number_block_seq')")
+            .ValueGeneratedOnAdd();
+        b.Property(e => e.NextVariantNumberOffset)
+            .HasDefaultValue(0)
+            .IsConcurrencyToken();
         b.Property(e => e.PreferredVendorId); // nullable FK to vendors
         b.HasIndex(e => new { e.OrganizationId, e.Sku }).IsUnique();
         b.HasOne(e => e.Category).WithMany().HasForeignKey(e => e.CategoryId);
         b.HasOne(e => e.Brand).WithMany().HasForeignKey(e => e.BrandId);
+        b.HasOne(e => e.VariantAttributeDefinition).WithMany()
+            .HasForeignKey(e => e.VariantAttributeDefinitionId)
+            .OnDelete(DeleteBehavior.Restrict);
         // FK to vendors (cross-module) — restrict to avoid cascade issues
         b.HasOne<ERPKeys.Domain.Modules.AccountsPayable.Vendor>()
             .WithMany()
@@ -78,6 +87,41 @@ public class CatalogProductConfiguration : IEntityTypeConfiguration<Product>
     }
 }
 
+public class VariantAttributeDefinitionConfiguration :
+    IEntityTypeConfiguration<VariantAttributeDefinition>
+{
+    public void Configure(EntityTypeBuilder<VariantAttributeDefinition> b)
+    {
+        b.ToTable("variant_attribute_definitions");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Code).HasMaxLength(30).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(150).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.HasIndex(e => new { e.OrganizationId, e.Code }).IsUnique();
+        b.HasMany(e => e.Values).WithOne(e => e.Definition)
+            .HasForeignKey(e => e.VariantAttributeDefinitionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class VariantAttributeValueConfiguration :
+    IEntityTypeConfiguration<VariantAttributeValue>
+{
+    public void Configure(EntityTypeBuilder<VariantAttributeValue> b)
+    {
+        b.ToTable("variant_attribute_values");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.AttributeType).HasConversion<string>().HasMaxLength(20);
+        b.Property(e => e.Value).HasMaxLength(100).IsRequired();
+        b.HasIndex(e => new
+        {
+            e.VariantAttributeDefinitionId,
+            e.AttributeType,
+            e.Value
+        }).IsUnique();
+    }
+}
+
 public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVariant>
 {
     public void Configure(EntityTypeBuilder<ProductVariant> b)
@@ -86,6 +130,7 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
         b.HasKey(e => e.Id);
         b.Property(e => e.OrganizationId).IsRequired();
         b.Property(e => e.Sku).HasMaxLength(60).IsRequired();
+        b.Property(e => e.VariantNumber).IsRequired();
         b.Property(e => e.Barcode).HasMaxLength(50);
         b.Property(e => e.Size).HasMaxLength(30).IsRequired();
         b.Property(e => e.Color).HasMaxLength(50);
@@ -96,6 +141,7 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
         b.Property(e => e.Weight).HasColumnType("numeric(10,4)");
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.HasIndex(e => new { e.OrganizationId, e.Sku }).IsUnique();
+        b.HasIndex(e => new { e.OrganizationId, e.VariantNumber }).IsUnique();
         b.HasIndex(e => e.Barcode).HasFilter("barcode IS NOT NULL");
         b.HasOne(e => e.Inventory).WithOne(i => i.ProductVariant)
             .HasForeignKey<InventoryRecord>(i => i.ProductVariantId)

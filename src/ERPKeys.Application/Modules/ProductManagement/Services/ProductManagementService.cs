@@ -17,6 +17,13 @@ public interface IProductManagementService
     Task<BrandDto> CreateBrandAsync(CreateBrandRequest req, CancellationToken ct = default);
     Task DeleteBrandAsync(Guid id, CancellationToken ct = default);
 
+    // Variant attribute definitions
+    Task<IEnumerable<VariantAttributeDefinitionDto>> GetVariantAttributeDefinitionsAsync(
+        bool activeOnly = false, CancellationToken ct = default);
+    Task<VariantAttributeDefinitionDto> CreateVariantAttributeDefinitionAsync(
+        CreateVariantAttributeDefinitionRequest req, CancellationToken ct = default);
+    Task DeactivateVariantAttributeDefinitionAsync(Guid id, CancellationToken ct = default);
+
     // Products
     Task<IEnumerable<ProductSummaryDto>> GetProductsAsync(
         string? categoryId = null, string? brandId = null,
@@ -27,15 +34,21 @@ public interface IProductManagementService
     Task UpdateProductAsync(Guid id, UpdateProductRequest req, CancellationToken ct = default);
     Task ChangeProductStatusAsync(Guid id, string status, CancellationToken ct = default);
     Task SetSalesTaxGroupAsync(Guid id, string? salesTaxGroup, CancellationToken ct = default);
+    Task SetVariantAttributeDefinitionAsync(
+        Guid id, Guid? definitionId, CancellationToken ct = default);
 
     // Variants
     Task<ProductVariantDto> AddVariantAsync(Guid productId, CreateVariantRequest req, CancellationToken ct = default);
+    Task<IEnumerable<ProductVariantDto>> AddVariantsBatchAsync(
+        Guid productId, CreateVariantBatchRequest req, CancellationToken ct = default);
     Task UpdateVariantPricingAsync(Guid variantId, UpdateVariantPricingRequest req, CancellationToken ct = default);
     Task DeactivateVariantAsync(Guid variantId, CancellationToken ct = default);
 
     // Inventory
-    Task<IEnumerable<InventoryDto>> GetInventoryAsync(
-        bool? needsReorder = null, CancellationToken ct = default);
+    Task<PagedProductInventoryDto> GetInventoryAsync(
+        bool needsReorder = false, string? search = null, string? sortBy = null,
+        bool descending = false, int page = 1, int pageSize = 25,
+        CancellationToken ct = default);
     Task AdjustInventoryAsync(Guid variantId, AdjustInventoryRequest req, CancellationToken ct = default);
     Task SetInventoryAsync(Guid variantId, SetInventoryRequest req, CancellationToken ct = default);
     Task UpdateThresholdsAsync(Guid variantId, UpdateThresholdsRequest req, CancellationToken ct = default);
@@ -154,6 +167,66 @@ public class ProductManagementService : IProductManagementService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<IEnumerable<VariantAttributeDefinitionDto>>
+        GetVariantAttributeDefinitionsAsync(
+            bool activeOnly = false, CancellationToken ct = default)
+    {
+        var query = _db.VariantAttributeDefinitions
+            .Include(definition => definition.Values)
+            .AsQueryable();
+        if (activeOnly)
+            query = query.Where(definition => definition.IsActive);
+
+        var definitions = await query
+            .OrderBy(definition => definition.Name)
+            .ToListAsync(ct);
+        return definitions.Select(MapVariantAttributeDefinition);
+    }
+
+    public async Task<VariantAttributeDefinitionDto>
+        CreateVariantAttributeDefinitionAsync(
+            CreateVariantAttributeDefinitionRequest req,
+            CancellationToken ct = default)
+    {
+        var code = req.Code.Trim().ToUpperInvariant();
+        if (await _db.VariantAttributeDefinitions.AnyAsync(
+                definition => definition.Code == code, ct))
+            throw new InvalidOperationException(
+                $"Variant attribute definition code '{code}' already exists.");
+
+        var sizes = NormalizeAttributeValues(req.Sizes);
+        if (sizes.Count == 0)
+            throw new InvalidOperationException("At least one Size value is required.");
+        var colors = NormalizeAttributeValues(req.Colors);
+        var materials = NormalizeAttributeValues(req.Materials);
+        var combinationCount =
+            sizes.Count * Math.Max(colors.Count, 1) * Math.Max(materials.Count, 1);
+        if (combinationCount > 500)
+            throw new InvalidOperationException(
+                $"This definition produces {combinationCount} combinations. The maximum is 500.");
+
+        var definition = new VariantAttributeDefinition(
+            _org.OrganizationId, code, req.Name, req.Description);
+        AddAttributeValues(definition, VariantAttributeType.Size, sizes);
+        AddAttributeValues(definition, VariantAttributeType.Color, colors);
+        AddAttributeValues(definition, VariantAttributeType.Material, materials);
+
+        _db.VariantAttributeDefinitions.Add(definition);
+        await _db.SaveChangesAsync(ct);
+        return MapVariantAttributeDefinition(definition);
+    }
+
+    public async Task DeactivateVariantAttributeDefinitionAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var definition = await _db.VariantAttributeDefinitions.FindAsync(
+            new object[] { id }, ct)
+            ?? throw new InvalidOperationException(
+                "Variant attribute definition not found.");
+        definition.Deactivate();
+        await _db.SaveChangesAsync(ct);
+    }
+
     // ── Products ──────────────────────────────────────────────────────────────
 
     public async Task<IEnumerable<ProductSummaryDto>> GetProductsAsync(
@@ -204,6 +277,7 @@ public class ProductManagementService : IProductManagementService
         var p = await _db.CatalogProducts
             .Include(p => p.Category)
             .Include(p => p.Brand)
+            .Include(p => p.VariantAttributeDefinition)
             .Include(p => p.Variants)
                 .ThenInclude(v => v.Inventory)
             .Where(p => p.Id == id && !p.IsDeleted)
@@ -287,6 +361,25 @@ public class ProductManagementService : IProductManagementService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task SetVariantAttributeDefinitionAsync(
+        Guid id, Guid? definitionId, CancellationToken ct = default)
+    {
+        var product = await _db.CatalogProducts.FindAsync(new object[] { id }, ct)
+            ?? throw new InvalidOperationException("Product not found.");
+        if (definitionId.HasValue)
+        {
+            var definitionExists = await _db.VariantAttributeDefinitions.AnyAsync(
+                definition => definition.Id == definitionId.Value && definition.IsActive,
+                ct);
+            if (!definitionExists)
+                throw new InvalidOperationException(
+                    "Active variant attribute definition not found.");
+        }
+
+        product.SetVariantAttributeDefinition(definitionId);
+        await _db.SaveChangesAsync(ct);
+    }
+
     // ── Variants ──────────────────────────────────────────────────────────────
 
     public async Task<ProductVariantDto> AddVariantAsync(Guid productId, CreateVariantRequest req, CancellationToken ct = default)
@@ -298,6 +391,7 @@ public class ProductManagementService : IProductManagementService
 
         var variant = p.AddVariant(req.Size, req.Color, req.Material,
             req.Barcode, req.PriceOverride, req.CostOverride);
+        _db.ProductVariants.Add(variant);
 
         // Create inventory record with initial stock
         var inv = new InventoryRecord(_org.OrganizationId, variant.Id,
@@ -306,6 +400,71 @@ public class ProductManagementService : IProductManagementService
 
         await _db.SaveChangesAsync(ct);
         return MapVariant(variant, inv, p.BasePrice, p.BaseCost);
+    }
+
+    public async Task<IEnumerable<ProductVariantDto>> AddVariantsBatchAsync(
+        Guid productId,
+        CreateVariantBatchRequest req,
+        CancellationToken ct = default)
+    {
+        var requested = req.Variants?.ToList() ?? new List<VariantCombinationRequest>();
+        if (requested.Count is < 1 or > 500)
+            throw new InvalidOperationException(
+                "Select between 1 and 500 variant combinations.");
+
+        var product = await _db.CatalogProducts
+            .Include(item => item.Variants)
+            .FirstOrDefaultAsync(item => item.Id == productId, ct)
+            ?? throw new InvalidOperationException("Product not found.");
+
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var combination in requested)
+        {
+            if (string.IsNullOrWhiteSpace(combination.Size))
+                throw new InvalidOperationException(
+                    "Every variant combination must contain a Size.");
+            var key = VariantCombinationKey(
+                combination.Size, combination.Color, combination.Material);
+            if (!keys.Add(key))
+                throw new InvalidOperationException(
+                    $"Duplicate variant combination: {key}.");
+        }
+
+        var existingKeys = product.Variants
+            .Select(variant => VariantCombinationKey(
+                variant.Size, variant.Color, variant.Material))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var duplicate = keys.FirstOrDefault(existingKeys.Contains);
+        if (duplicate is not null)
+            throw new InvalidOperationException(
+                $"Variant combination already exists: {duplicate}.");
+        var existingSkus = product.Variants
+            .Select(variant => variant.Sku)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+        var created = new List<(ProductVariant Variant, InventoryRecord Inventory)>();
+        foreach (var combination in requested)
+        {
+            var variant = product.AddVariant(
+                combination.Size, combination.Color, combination.Material);
+            if (existingSkus.Contains(variant.Sku) || !newSkus.Add(variant.Sku))
+                throw new InvalidOperationException(
+                    $"The selected attributes generate duplicate SKU '{variant.Sku}'. Adjust the definition values.");
+            _db.ProductVariants.Add(variant);
+            var inventory = new InventoryRecord(
+                _org.OrganizationId, variant.Id,
+                req.InitialStock, req.ReorderPoint,
+                req.MinimumStock, req.MaximumStock, req.Location);
+            _db.InventoryRecords.Add(inventory);
+            created.Add((variant, inventory));
+        }
+
+        await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return created.Select(item => MapVariant(
+            item.Variant, item.Inventory, product.BasePrice, product.BaseCost));
     }
 
     public async Task UpdateVariantPricingAsync(Guid variantId, UpdateVariantPricingRequest req, CancellationToken ct = default)
@@ -326,32 +485,116 @@ public class ProductManagementService : IProductManagementService
 
     // ── Inventory ─────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<InventoryDto>> GetInventoryAsync(
-        bool? needsReorder = null, CancellationToken ct = default)
+    public async Task<PagedProductInventoryDto> GetInventoryAsync(
+        bool needsReorder = false, string? search = null, string? sortBy = null,
+        bool descending = false, int page = 1, int pageSize = 25,
+        CancellationToken ct = default)
     {
-        var q = _db.InventoryRecords
+        var baseQuery = _db.InventoryRecords
             .Include(i => i.ProductVariant)
                 .ThenInclude(v => v!.Product)
-            .Where(i => !i.IsDeleted)
-            .AsQueryable();
+                    .ThenInclude(p => p!.Category)
+            .AsNoTracking()
+            .Where(i => !i.IsDeleted && i.OrganizationId == _org.OrganizationId);
 
-        if (needsReorder == true)
-            q = q.Where(i => i.QuantityOnHand <= i.ReorderPoint);
+        var reorderCount = await baseQuery
+            .CountAsync(i => i.QuantityOnHand <= i.ReorderPoint, ct);
 
-        var list = await q
-            .OrderBy(i => i.ProductVariant!.Product!.Name)
-            .ThenBy(i => i.ProductVariant!.Size)
+        var query = needsReorder
+            ? baseQuery.Where(i => i.QuantityOnHand <= i.ReorderPoint)
+            : baseQuery;
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            var matchesPrice = decimal.TryParse(term, out var price);
+            var matchesVariantStatus = Enum.TryParse<VariantStatus>(
+                term, true, out var variantStatus);
+            query = query.Where(i =>
+                i.ProductVariant!.Sku.ToLower().Contains(term) ||
+                i.ProductVariant.Product!.Name.ToLower().Contains(term) ||
+                (i.ProductVariant.Product.Category != null &&
+                    i.ProductVariant.Product.Category.Name.ToLower().Contains(term)) ||
+                i.ProductVariant.Size.ToLower().Contains(term) ||
+                (i.ProductVariant.Color != null &&
+                    i.ProductVariant.Color.ToLower().Contains(term)) ||
+                (i.ProductVariant.Material != null &&
+                    i.ProductVariant.Material.ToLower().Contains(term)) ||
+                (i.Location != null && i.Location.ToLower().Contains(term)) ||
+                (matchesPrice &&
+                    (i.ProductVariant.PriceOverride ??
+                        i.ProductVariant.Product.BasePrice) == price) ||
+                (matchesVariantStatus &&
+                    i.ProductVariant.Status == variantStatus));
+        }
+
+        pageSize = Math.Clamp(pageSize, 10, 100);
+        var totalCount = await query.CountAsync(ct);
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        page = Math.Clamp(page, 1, Math.Max(1, totalPages));
+
+        var ordered = (sortBy?.Trim().ToLowerInvariant(), descending) switch
+        {
+            ("product", false) => query.OrderBy(i => i.ProductVariant!.Product!.Name).ThenBy(i => i.Id),
+            ("product", true) => query.OrderByDescending(i => i.ProductVariant!.Product!.Name).ThenBy(i => i.Id),
+            ("category", false) => query.OrderBy(i => i.ProductVariant!.Product!.Category!.Name).ThenBy(i => i.Id),
+            ("category", true) => query.OrderByDescending(i => i.ProductVariant!.Product!.Category!.Name).ThenBy(i => i.Id),
+            ("name", false) => query.OrderBy(i => i.ProductVariant!.Size).ThenBy(i => i.ProductVariant!.Color).ThenBy(i => i.Id),
+            ("name", true) => query.OrderByDescending(i => i.ProductVariant!.Size).ThenByDescending(i => i.ProductVariant!.Color).ThenBy(i => i.Id),
+            ("size", false) => query.OrderBy(i => i.ProductVariant!.Size).ThenBy(i => i.Id),
+            ("size", true) => query.OrderByDescending(i => i.ProductVariant!.Size).ThenBy(i => i.Id),
+            ("color", false) => query.OrderBy(i => i.ProductVariant!.Color).ThenBy(i => i.Id),
+            ("color", true) => query.OrderByDescending(i => i.ProductVariant!.Color).ThenBy(i => i.Id),
+            ("material", false) => query.OrderBy(i => i.ProductVariant!.Material).ThenBy(i => i.Id),
+            ("material", true) => query.OrderByDescending(i => i.ProductVariant!.Material).ThenBy(i => i.Id),
+            ("price", false) => query.OrderBy(i => i.ProductVariant!.PriceOverride ?? i.ProductVariant.Product!.BasePrice).ThenBy(i => i.Id),
+            ("price", true) => query.OrderByDescending(i => i.ProductVariant!.PriceOverride ?? i.ProductVariant.Product!.BasePrice).ThenBy(i => i.Id),
+            ("onhand", false) => query.OrderBy(i => i.QuantityOnHand).ThenBy(i => i.Id),
+            ("onhand", true) => query.OrderByDescending(i => i.QuantityOnHand).ThenBy(i => i.Id),
+            ("reserved", false) => query.OrderBy(i => i.QuantityReserved).ThenBy(i => i.Id),
+            ("reserved", true) => query.OrderByDescending(i => i.QuantityReserved).ThenBy(i => i.Id),
+            ("available", false) => query.OrderBy(i => i.QuantityOnHand - i.QuantityReserved).ThenBy(i => i.Id),
+            ("available", true) => query.OrderByDescending(i => i.QuantityOnHand - i.QuantityReserved).ThenBy(i => i.Id),
+            ("reorderpoint", false) => query.OrderBy(i => i.ReorderPoint).ThenBy(i => i.Id),
+            ("reorderpoint", true) => query.OrderByDescending(i => i.ReorderPoint).ThenBy(i => i.Id),
+            ("location", false) => query.OrderBy(i => i.Location).ThenBy(i => i.Id),
+            ("location", true) => query.OrderByDescending(i => i.Location).ThenBy(i => i.Id),
+            ("status", false) => query.OrderBy(i => i.QuantityOnHand <= i.ReorderPoint).ThenBy(i => i.Id),
+            ("status", true) => query.OrderByDescending(i => i.QuantityOnHand <= i.ReorderPoint).ThenBy(i => i.Id),
+            (_, true) => query.OrderByDescending(i => i.ProductVariant!.VariantNumber).ThenBy(i => i.Id),
+            _ => query.OrderBy(i => i.ProductVariant!.VariantNumber).ThenBy(i => i.Id)
+        };
+
+        var list = await ordered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
 
-        return list.Select(i => new InventoryDto(
+        var items = list.Select(i => new InventoryDto(
             i.Id, i.ProductVariantId,
+            i.ProductVariant?.VariantNumber ?? 0,
             i.ProductVariant?.Sku ?? "—",
+            string.Join(" · ", new[]
+            {
+                i.ProductVariant?.Size,
+                i.ProductVariant?.Color,
+                i.ProductVariant?.Material
+            }.Where(value => !string.IsNullOrWhiteSpace(value))),
             i.ProductVariant?.Product?.Name ?? "—",
+            i.ProductVariant?.Product?.Category?.Name,
             i.ProductVariant?.Size ?? "—",
             i.ProductVariant?.Color,
+            i.ProductVariant?.Material,
+            i.ProductVariant?.PriceOverride ??
+                i.ProductVariant?.Product?.BasePrice ?? 0,
+            i.ProductVariant?.Status.ToString() ?? "Inactive",
             i.QuantityOnHand, i.QuantityReserved, i.QuantityAvailable,
             i.ReorderPoint, i.MinimumStock, i.MaximumStock,
-            i.NeedsReorder, i.Location, i.LastCountDate));
+            i.NeedsReorder, i.Location, i.LastCountDate))
+            .ToList();
+
+        return new PagedProductInventoryDto(
+            items, page, pageSize, totalCount, totalPages, reorderCount);
     }
 
     public async Task AdjustInventoryAsync(Guid variantId, AdjustInventoryRequest req, CancellationToken ct = default)
@@ -470,6 +713,8 @@ public class ProductManagementService : IProductManagementService
             p.Currency,
             p.Tags, p.ImageUrl, p.Status.ToString(),
             p.PreferredVendorId, preferredVendorName,
+            p.VariantAttributeDefinitionId,
+            p.VariantAttributeDefinition?.Name,
             p.CreatedAt,
             p.Variants.Select(v => MapVariant(v, v.Inventory, p.BasePrice, p.BaseCost)));
     }
@@ -477,11 +722,52 @@ public class ProductManagementService : IProductManagementService
     private static ProductVariantDto MapVariant(
         ProductVariant v, InventoryRecord? inv,
         decimal productBasePrice, decimal productBaseCost) => new(
-        v.Id, v.ProductId, v.Sku, v.Barcode, v.Size, v.Color, v.Material,
+        v.Id, v.ProductId, v.VariantNumber,
+        string.Join(" · ", new[] { v.Size, v.Color, v.Material }
+            .Where(value => !string.IsNullOrWhiteSpace(value))),
+        v.Sku, v.Barcode, v.Size, v.Color, v.Material,
         v.PriceOverride, v.CostOverride,
         v.EffectivePrice(productBasePrice), v.EffectiveCost(productBaseCost),
         v.Weight, v.Status.ToString(),
         inv?.QuantityOnHand ?? 0, inv?.QuantityReserved ?? 0,
         inv?.QuantityAvailable ?? 0, inv?.ReorderPoint ?? 0,
         inv?.NeedsReorder ?? false, inv?.Location);
+
+    private static VariantAttributeDefinitionDto MapVariantAttributeDefinition(
+        VariantAttributeDefinition definition) => new(
+        definition.Id,
+        definition.Code,
+        definition.Name,
+        definition.Description,
+        definition.IsActive,
+        definition.Values
+            .OrderBy(value => value.AttributeType)
+            .ThenBy(value => value.DisplayOrder)
+            .Select(value => new VariantAttributeValueDto(
+                value.Id,
+                value.AttributeType.ToString(),
+                value.Value,
+                value.DisplayOrder)));
+
+    private static List<string> NormalizeAttributeValues(
+        IEnumerable<string>? values) =>
+        values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new List<string>();
+
+    private static void AddAttributeValues(
+        VariantAttributeDefinition definition,
+        VariantAttributeType type,
+        IEnumerable<string> values)
+    {
+        var order = 0;
+        foreach (var value in values)
+            definition.AddValue(type, value, order++);
+    }
+
+    private static string VariantCombinationKey(
+        string size, string? color, string? material) =>
+        $"{size.Trim()}|{color?.Trim() ?? string.Empty}|{material?.Trim() ?? string.Empty}";
 }

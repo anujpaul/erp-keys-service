@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260629032348_AddVariantAttributeDefinitions")]
+    partial class AddVariantAttributeDefinitions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -23,11 +26,6 @@ namespace ERPKeys.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.HasSequence<int>("variant_number_block_seq")
-                .StartsAt(1000000L)
-                .IncrementsBy(1000)
-                .HasMax(9999000L);
 
             modelBuilder.Entity("ERPKeys.Domain.Modules.AccountsPayable.APInvoice", b =>
                 {
@@ -6422,13 +6420,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
-                    b.Property<int>("NextVariantNumberOffset")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("next_variant_number_offset");
-
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
@@ -6482,12 +6473,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.Property<Guid?>("VariantAttributeDefinitionId")
                         .HasColumnType("uuid")
                         .HasColumnName("variant_attribute_definition_id");
-
-                    b.Property<int>("VariantNumberBase")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("variant_number_base")
-                        .HasDefaultValueSql("nextval('variant_number_block_seq')");
 
                     b.HasKey("Id")
                         .HasName("pk_catalog_products");
@@ -6584,10 +6569,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<int>("VariantNumber")
-                        .HasColumnType("integer")
-                        .HasColumnName("variant_number");
-
                     b.Property<decimal>("Weight")
                         .HasColumnType("numeric(10,4)")
                         .HasColumnName("weight");
@@ -6605,10 +6586,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "Sku")
                         .IsUnique()
                         .HasDatabaseName("ix_product_variants_organization_id_sku");
-
-                    b.HasIndex("OrganizationId", "VariantNumber")
-                        .IsUnique()
-                        .HasDatabaseName("ix_product_variants_organization_id_variant_number");
 
                     b.ToTable("product_variants", (string)null);
                 });

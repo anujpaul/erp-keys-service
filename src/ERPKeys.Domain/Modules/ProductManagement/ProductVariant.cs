@@ -8,6 +8,7 @@ public class ProductVariant : BaseEntity
 {
     public Guid OrganizationId { get; private set; }
     public Guid ProductId { get; private set; }
+    public int VariantNumber { get; private set; }
     public string Sku { get; private set; } = string.Empty;      // Unique per org
     public string? Barcode { get; private set; }                  // UPC / EAN / GTIN
     public string Size { get; private set; } = string.Empty;      // S, M, L, XL / 8, 9, 10 / 32x30
@@ -24,14 +25,18 @@ public class ProductVariant : BaseEntity
 
     private ProductVariant() { }
 
-    public ProductVariant(Guid organizationId, Guid productId, string sku,
+    public ProductVariant(Guid organizationId, Guid productId, int variantNumber,
         string size, string? color, string? material,
         string? barcode = null, decimal? priceOverride = null, decimal? costOverride = null,
         decimal weight = 0m)
     {
         OrganizationId = organizationId;
         ProductId = productId;
-        Sku = sku.Trim().ToUpperInvariant();
+        if (variantNumber is < 1_000_001 or > 9_999_999)
+            throw new ArgumentOutOfRangeException(
+                nameof(variantNumber), "Variant ID must be a seven-digit number.");
+        VariantNumber = variantNumber;
+        Sku = variantNumber.ToString("D7");
         Size = size.Trim();
         Color = color?.Trim();
         Material = material?.Trim();

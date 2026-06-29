@@ -91,6 +91,8 @@ public record ProductDto(
     string Status,
     Guid? PreferredVendorId,
     string? PreferredVendorName,
+    Guid? VariantAttributeDefinitionId,
+    string? VariantAttributeDefinitionName,
     DateTime CreatedAt,
     IEnumerable<ProductVariantDto> Variants
 );
@@ -130,11 +132,55 @@ public record UpdateProductRequest(
 
 public record SetSalesTaxGroupRequest(string? SalesTaxGroup);
 
+public record VariantAttributeValueDto(
+    Guid Id,
+    string AttributeType,
+    string Value,
+    int DisplayOrder
+);
+
+public record VariantAttributeDefinitionDto(
+    Guid Id,
+    string Code,
+    string Name,
+    string? Description,
+    bool IsActive,
+    IEnumerable<VariantAttributeValueDto> Values
+);
+
+public record CreateVariantAttributeDefinitionRequest(
+    string Code,
+    string Name,
+    string? Description,
+    IEnumerable<string> Sizes,
+    IEnumerable<string>? Colors,
+    IEnumerable<string>? Materials
+);
+
+public record SetVariantAttributeDefinitionRequest(Guid? DefinitionId);
+
+public record VariantCombinationRequest(
+    string Size,
+    string? Color,
+    string? Material
+);
+
+public record CreateVariantBatchRequest(
+    IEnumerable<VariantCombinationRequest> Variants,
+    decimal InitialStock = 0m,
+    decimal ReorderPoint = 5m,
+    decimal MinimumStock = 0m,
+    decimal MaximumStock = 100m,
+    string? Location = null
+);
+
 // ── Variant ───────────────────────────────────────────────────────────────────
 
 public record ProductVariantDto(
     Guid Id,
     Guid ProductId,
+    int VariantNumber,
+    string VariantName,
     string Sku,
     string? Barcode,
     string Size,
@@ -181,10 +227,16 @@ public record UpdateVariantPricingRequest(
 public record InventoryDto(
     Guid Id,
     Guid ProductVariantId,
+    int VariantNumber,
     string VariantSku,
+    string VariantName,
     string ProductName,
+    string? CategoryName,
     string Size,
     string? Color,
+    string? Material,
+    decimal EffectivePrice,
+    string VariantStatus,
     decimal QuantityOnHand,
     decimal QuantityReserved,
     decimal QuantityAvailable,
@@ -194,6 +246,15 @@ public record InventoryDto(
     bool NeedsReorder,
     string? Location,
     DateTime? LastCountDate
+);
+
+public record PagedProductInventoryDto(
+    IReadOnlyList<InventoryDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    int ReorderCount
 );
 
 public record AdjustInventoryRequest(

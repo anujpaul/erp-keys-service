@@ -62,6 +62,27 @@ public class ProductManagementController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpGet("variant-attribute-definitions")]
+    public async Task<IActionResult> GetVariantAttributeDefinitions(
+        [FromQuery] bool activeOnly, CancellationToken ct)
+        => Ok(await _pm.GetVariantAttributeDefinitionsAsync(activeOnly, ct));
+
+    [HttpPost("variant-attribute-definitions")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
+    public async Task<IActionResult> CreateVariantAttributeDefinition(
+        [FromBody] CreateVariantAttributeDefinitionRequest req,
+        CancellationToken ct)
+        => Ok(await _pm.CreateVariantAttributeDefinitionAsync(req, ct));
+
+    [HttpPost("variant-attribute-definitions/{id:guid}/deactivate")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
+    public async Task<IActionResult> DeactivateVariantAttributeDefinition(
+        Guid id, CancellationToken ct)
+    {
+        await _pm.DeactivateVariantAttributeDefinitionAsync(id, ct);
+        return NoContent();
+    }
+
     // ── Products ──────────────────────────────────────────────────────────────
 
     [HttpGet("products")]
@@ -111,11 +132,31 @@ public class ProductManagementController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("products/{id:guid}/variant-attribute-definition")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
+    public async Task<IActionResult> SetVariantAttributeDefinition(
+        Guid id,
+        [FromBody] SetVariantAttributeDefinitionRequest req,
+        CancellationToken ct)
+    {
+        await _pm.SetVariantAttributeDefinitionAsync(id, req.DefinitionId, ct);
+        return NoContent();
+    }
+
     // ── Variants ──────────────────────────────────────────────────────────────
 
     [HttpPost("products/{productId:guid}/variants")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
     public async Task<IActionResult> AddVariant(Guid productId, [FromBody] CreateVariantRequest req, CancellationToken ct)
         => Ok(await _pm.AddVariantAsync(productId, req, ct));
+
+    [HttpPost("products/{productId:guid}/variants/batch")]
+    [Authorize(Policy = PermissionKeys.ProductCatalogManage)]
+    public async Task<IActionResult> AddVariantsBatch(
+        Guid productId,
+        [FromBody] CreateVariantBatchRequest req,
+        CancellationToken ct)
+        => Ok(await _pm.AddVariantsBatchAsync(productId, req, ct));
 
     [HttpPut("variants/{variantId:guid}/pricing")]
     public async Task<IActionResult> UpdateVariantPricing(Guid variantId, [FromBody] UpdateVariantPricingRequest req, CancellationToken ct)
@@ -134,8 +175,16 @@ public class ProductManagementController : ControllerBase
     // ── Inventory ─────────────────────────────────────────────────────────────
 
     [HttpGet("inventory")]
-    public async Task<IActionResult> GetInventory([FromQuery] bool needsReorder = false, CancellationToken ct = default)
-        => Ok(await _pm.GetInventoryAsync(needsReorder, ct));
+    public async Task<IActionResult> GetInventory(
+        [FromQuery] bool needsReorder = false,
+        [FromQuery] string? search = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool descending = false,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _pm.GetInventoryAsync(
+            needsReorder, search, sortBy, descending, page, pageSize, ct));
 
     [HttpPost("inventory/{variantId:guid}/adjust")]
     [Authorize(Policy = PermissionKeys.InventoryStockAdjust)]

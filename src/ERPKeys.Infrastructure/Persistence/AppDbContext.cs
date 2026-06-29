@@ -52,6 +52,10 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Brand>           Brands           => Set<Brand>();
     public DbSet<PMProduct>       CatalogProducts  => Set<PMProduct>();
     public DbSet<ProductVariant>  ProductVariants  => Set<ProductVariant>();
+    public DbSet<VariantAttributeDefinition> VariantAttributeDefinitions =>
+        Set<VariantAttributeDefinition>();
+    public DbSet<VariantAttributeValue> VariantAttributeValues =>
+        Set<VariantAttributeValue>();
     public DbSet<InventoryRecord>      InventoryRecords      => Set<InventoryRecord>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
     public DbSet<WarehouseInventoryBalance> WarehouseInventoryBalances => Set<WarehouseInventoryBalance>();
@@ -186,6 +190,10 @@ public class AppDbContext : DbContext, IAppDbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.HasPostgresExtension("vector");
+        modelBuilder.HasSequence<int>("variant_number_block_seq")
+            .StartsAt(1_000_000)
+            .IncrementsBy(1_000)
+            .HasMax(9_999_000);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
         // Exclude the obsolete AR Product tombstone — it has no table
@@ -209,6 +217,10 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.Entity<PMProduct>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<ProductVariant>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<VariantAttributeDefinition>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<VariantAttributeValue>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<InventoryRecord>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));

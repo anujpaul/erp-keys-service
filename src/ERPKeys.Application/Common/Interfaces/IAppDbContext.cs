@@ -40,6 +40,8 @@ public interface IAppDbContext
     DbSet<Brand>           Brands           { get; }
     DbSet<Domain.Modules.ProductManagement.Product> CatalogProducts { get; }
     DbSet<ProductVariant>  ProductVariants  { get; }
+    DbSet<VariantAttributeDefinition> VariantAttributeDefinitions { get; }
+    DbSet<VariantAttributeValue> VariantAttributeValues { get; }
     DbSet<InventoryRecord>      InventoryRecords      { get; }
     DbSet<InventoryTransaction> InventoryTransactions { get; }
     DbSet<Warehouse> Warehouses { get; }
