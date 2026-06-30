@@ -1,4 +1,6 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Services;
+using ERPKeys.Domain.Modules.AccountsPayable;
 using ERPKeys.Domain.Modules.Workflow;
 using Microsoft.EntityFrameworkCore;
 
@@ -66,7 +68,8 @@ public record SubmitForApprovalRequest(
     Guid   DocumentId,
     string DocumentRef,
     decimal DocumentAmount,
-    string SubmittedBy);
+    string SubmittedBy,
+    bool RequireApproval = false);
 
 public record ApproveStepRequest(string ApprovedBy, string? Comments);
 public record RejectStepRequest(string RejectedBy, string Reason);
@@ -112,7 +115,21 @@ public interface IWorkflowService
 public class WorkflowService : IWorkflowService
 {
     private readonly IAppDbContext _db;
-    public WorkflowService(IAppDbContext db) => _db = db;
+    private readonly ICurrentOrganizationService _org;
+    private readonly ICurrentUserService _user;
+    private readonly IDocumentAuditService _audit;
+
+    public WorkflowService(
+        IAppDbContext db,
+        ICurrentOrganizationService org,
+        ICurrentUserService user,
+        IDocumentAuditService audit)
+    {
+        _db = db;
+        _org = org;
+        _user = user;
+        _audit = audit;
+    }
 
     // ── Templates ─────────────────────────────────────────────────────────────
 
@@ -121,6 +138,7 @@ public class WorkflowService : IWorkflowService
         var templates = await _db.WorkflowTemplates
             .Include(t => t.Steps)
             .AsNoTracking()
+            .Where(t => t.OrganizationId == _org.OrganizationId)
             .OrderBy(t => t.DocumentType).ThenBy(t => t.AmountThreshold)
             .ToListAsync(ct);
         return templates.Select(ToTemplateDto);
@@ -129,7 +147,8 @@ public class WorkflowService : IWorkflowService
     public async Task<WorkflowTemplateDto> GetTemplateAsync(Guid id, CancellationToken ct = default)
     {
         var t = await _db.WorkflowTemplates.Include(t => t.Steps).AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == id, ct)
+            .FirstOrDefaultAsync(
+                t => t.Id == id && t.OrganizationId == _org.OrganizationId, ct)
             ?? throw new InvalidOperationException("Template not found.");
         return ToTemplateDto(t);
     }
@@ -140,13 +159,16 @@ public class WorkflowService : IWorkflowService
         if (id.HasValue)
         {
             template = await _db.WorkflowTemplates.Include(t => t.Steps)
-                .FirstOrDefaultAsync(t => t.Id == id.Value, ct)
+                .FirstOrDefaultAsync(
+                    t => t.Id == id.Value &&
+                        t.OrganizationId == _org.OrganizationId, ct)
                 ?? throw new InvalidOperationException("Template not found.");
             template.Update(req.Name, req.AmountThreshold, req.IsActive);
         }
         else
         {
-            template = new WorkflowTemplate(GetCurrentOrgId(), req.Name, req.DocumentType, req.AmountThreshold);
+            template = new WorkflowTemplate(
+                _org.OrganizationId, req.Name, req.DocumentType, req.AmountThreshold);
             _db.WorkflowTemplates.Add(template);
         }
         // Re-add steps (simple replace strategy for now)
@@ -159,7 +181,8 @@ public class WorkflowService : IWorkflowService
 
     public async Task DeleteTemplateAsync(Guid id, CancellationToken ct = default)
     {
-        var t = await _db.WorkflowTemplates.FirstOrDefaultAsync(t => t.Id == id, ct)
+        var t = await _db.WorkflowTemplates.FirstOrDefaultAsync(
+                t => t.Id == id && t.OrganizationId == _org.OrganizationId, ct)
             ?? throw new InvalidOperationException("Template not found.");
         t.SoftDelete();
         await _db.SaveChangesAsync(ct);
@@ -173,13 +196,14 @@ public class WorkflowService : IWorkflowService
         var template = await _db.WorkflowTemplates
             .Include(t => t.Steps)
             .AsNoTracking()
-            .Where(t => t.IsActive && t.DocumentType == req.DocumentType
+            .Where(t => t.OrganizationId == _org.OrganizationId
+                        && t.IsActive && t.DocumentType == req.DocumentType
                         && t.AmountThreshold <= req.DocumentAmount)
             .OrderByDescending(t => t.AmountThreshold)
             .FirstOrDefaultAsync(ct);
 
         var instance = new WorkflowInstance(
-            GetCurrentOrgId(),
+            _org.OrganizationId,
             req.DocumentType,
             req.DocumentId,
             req.DocumentRef,
@@ -196,6 +220,10 @@ public class WorkflowService : IWorkflowService
                 instance.AddApprovalStep(step.StepOrder, step.StepName,
                     step.ApproverRole, step.ApproverUserId);
         }
+        else if (req.RequireApproval)
+        {
+            instance.AddApprovalStep(1, "Approval", null, null);
+        }
         else
         {
             // No template found — auto-approve (no approval needed)
@@ -206,7 +234,7 @@ public class WorkflowService : IWorkflowService
         await _db.SaveChangesAsync(ct);
 
         // Auto-approve if no template
-        if (template == null)
+        if (template == null && !req.RequireApproval)
         {
             var step = instance.ApprovalSteps.First();
             instance.Approve(step.Id, "System", "Auto-approved: no matching workflow rule.");
@@ -222,7 +250,9 @@ public class WorkflowService : IWorkflowService
         ApproveStepRequest req, CancellationToken ct = default)
     {
         var instance = await LoadInstance(instanceId, ct);
-        instance.Approve(stepId, req.ApprovedBy, req.Comments);
+        instance.Approve(stepId, _user.Username, req.Comments);
+        if (instance.Status == ApprovalStatus.Approved)
+            await ApplyApprovedDocumentAsync(instance, ct);
         await _db.SaveChangesAsync(ct);
         return await GetInstanceAsync(instanceId, ct);
     }
@@ -231,7 +261,8 @@ public class WorkflowService : IWorkflowService
         RejectStepRequest req, CancellationToken ct = default)
     {
         var instance = await LoadInstance(instanceId, ct);
-        instance.Reject(stepId, req.RejectedBy, req.Reason);
+        instance.Reject(stepId, _user.Username, req.Reason);
+        await ApplyRejectedDocumentAsync(instance, req.Reason, ct);
         await _db.SaveChangesAsync(ct);
         return await GetInstanceAsync(instanceId, ct);
     }
@@ -251,7 +282,9 @@ public class WorkflowService : IWorkflowService
         var i = await _db.WorkflowInstances
             .Include(i => i.ApprovalSteps)
             .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.Id == instanceId, ct)
+            .FirstOrDefaultAsync(
+                i => i.Id == instanceId &&
+                    i.OrganizationId == _org.OrganizationId, ct)
             ?? throw new InvalidOperationException("Workflow instance not found.");
         return ToInstanceDto(i);
     }
@@ -262,7 +295,8 @@ public class WorkflowService : IWorkflowService
         var i = await _db.WorkflowInstances
             .Include(i => i.ApprovalSteps)
             .AsNoTracking()
-            .Where(i => i.DocumentType == docType && i.DocumentId == documentId)
+            .Where(i => i.OrganizationId == _org.OrganizationId
+                && i.DocumentType == docType && i.DocumentId == documentId)
             .OrderByDescending(i => i.CreatedAt)
             .FirstOrDefaultAsync(ct);
         return i == null ? null : ToInstanceDto(i);
@@ -274,8 +308,9 @@ public class WorkflowService : IWorkflowService
         var query = _db.WorkflowInstances
             .Include(i => i.ApprovalSteps)
             .AsNoTracking()
-            .Where(i => i.Status == ApprovalStatus.Submitted
-                     || i.Status == ApprovalStatus.UnderReview);
+            .Where(i => i.OrganizationId == _org.OrganizationId
+                && (i.Status == ApprovalStatus.Submitted
+                    || i.Status == ApprovalStatus.UnderReview));
 
         var instances = await query.ToListAsync(ct);
 
@@ -313,7 +348,7 @@ public class WorkflowService : IWorkflowService
         var query = _db.WorkflowInstances
             .Include(i => i.ApprovalSteps)
             .AsNoTracking()
-            .AsQueryable();
+            .Where(i => i.OrganizationId == _org.OrganizationId);
 
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(i => i.Status.ToString() == status);
@@ -329,11 +364,58 @@ public class WorkflowService : IWorkflowService
     private async Task<WorkflowInstance> LoadInstance(Guid id, CancellationToken ct)
         => await _db.WorkflowInstances
             .Include(i => i.ApprovalSteps)
-            .FirstOrDefaultAsync(i => i.Id == id, ct)
+            .FirstOrDefaultAsync(
+                i => i.Id == id &&
+                    i.OrganizationId == _org.OrganizationId, ct)
            ?? throw new InvalidOperationException("Workflow instance not found.");
 
-    // Temp: org from context — in real app comes from ICurrentOrganizationService
-    private Guid GetCurrentOrgId() => Guid.Empty;
+    private async Task ApplyApprovedDocumentAsync(
+        WorkflowInstance instance,
+        CancellationToken ct)
+    {
+        if (instance.DocumentType != WorkflowDocumentType.PurchaseOrder)
+            return;
+
+        var purchaseOrder = await _db.PurchaseOrders
+            .FirstOrDefaultAsync(
+                order => order.Id == instance.DocumentId &&
+                    order.OrganizationId == _org.OrganizationId, ct)
+            ?? throw new InvalidOperationException(
+                "The purchase order linked to this approval was not found.");
+        var oldStatus = purchaseOrder.Status.ToString();
+        purchaseOrder.WorkflowApproved();
+        _audit.Add("AP", "Approved", purchaseOrder.Id, "PurchaseOrder",
+            new { Status = oldStatus },
+            new
+            {
+                Status = purchaseOrder.Status.ToString(),
+                WorkflowInstanceId = instance.Id
+            });
+    }
+
+    private async Task ApplyRejectedDocumentAsync(
+        WorkflowInstance instance,
+        string reason,
+        CancellationToken ct)
+    {
+        if (instance.DocumentType != WorkflowDocumentType.PurchaseOrder)
+            return;
+
+        var purchaseOrder = await _db.PurchaseOrders
+            .FirstOrDefaultAsync(
+                order => order.Id == instance.DocumentId &&
+                    order.OrganizationId == _org.OrganizationId, ct)
+            ?? throw new InvalidOperationException(
+                "The purchase order linked to this approval was not found.");
+        purchaseOrder.WorkflowRejected(reason);
+        _audit.Add("AP", "Rejected", purchaseOrder.Id, "PurchaseOrder", null,
+            new
+            {
+                Status = purchaseOrder.Status.ToString(),
+                WorkflowInstanceId = instance.Id,
+                Reason = reason
+            });
+    }
 
     private static WorkflowTemplateDto ToTemplateDto(WorkflowTemplate t) =>
         new(t.Id, t.Name, t.DocumentType.ToString(), t.AmountThreshold, t.IsActive,

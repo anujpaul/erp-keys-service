@@ -3,8 +3,10 @@ using ERPKeys.Application.Common.Services;
 using ERPKeys.Domain.Common;
 using ERPKeys.Application.Modules.AccountsPayable.DTOs;
 using ERPKeys.Application.Modules.InventoryManagement.Services;
+using ERPKeys.Application.Modules.Workflow.Services;
 using ERPKeys.Domain.Modules.AccountsPayable;
 using ERPKeys.Domain.Modules.GeneralLedger;
+using ERPKeys.Domain.Modules.Workflow;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using Microsoft.EntityFrameworkCore;
 
@@ -83,8 +85,6 @@ public interface IAccountsPayableService
 
     // PO Workflow
     Task SubmitPOForApprovalAsync(Guid poId, string submittedBy, CancellationToken ct = default);
-    Task POWorkflowApprovedAsync(Guid workflowInstanceId, CancellationToken ct = default);
-    Task POWorkflowRejectedAsync(Guid workflowInstanceId, string reason, CancellationToken ct = default);
 
     // Invoice Workflow
     Task SubmitInvoiceForApprovalAsync(Guid invoiceId, string submittedBy, CancellationToken ct = default);
@@ -113,19 +113,25 @@ public class AccountsPayableService : IAccountsPayableService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
+    private readonly ICurrentUserService _user;
     private readonly IDocumentAuditService _audit;
     private readonly IPurchaseInventoryPostingService _inventoryPosting;
+    private readonly IWorkflowService _workflow;
 
     public AccountsPayableService(
         IAppDbContext db,
         ICurrentOrganizationService org,
+        ICurrentUserService user,
         IDocumentAuditService audit,
-        IPurchaseInventoryPostingService inventoryPosting)
+        IPurchaseInventoryPostingService inventoryPosting,
+        IWorkflowService workflow)
     {
         _db = db;
         _org = org;
+        _user = user;
         _audit = audit;
         _inventoryPosting = inventoryPosting;
+        _workflow = workflow;
     }
 
     public async Task<AccountsPayableParametersDto> GetParametersAsync(
@@ -366,9 +372,8 @@ public class AccountsPayableService : IAccountsPayableService
     {
         var po = await LoadPOWithLines(poId, ct);
         var maximumOverReceiptPercent = await GetMaximumOverReceiptPercentAsync(ct);
-        var canReceive = po.Status is not PurchaseOrderStatus.Draft
-            and not PurchaseOrderStatus.Closed
-            and not PurchaseOrderStatus.Cancelled
+        var canReceive =
+            (po.Status is PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived)
             && po.Lines.Any(line =>
                 line.ReceivedQty < line.OrderedQty * (1 + maximumOverReceiptPercent / 100m) - 0.0001m);
 
@@ -1058,7 +1063,7 @@ public class AccountsPayableService : IAccountsPayableService
             o.Description, o.Currency,
             o.Status.ToString(), o.InvoiceStatus.ToString(),
             o.SubTotal, o.TaxTotal, o.GrandTotal, o.InvoicedAmount,
-            o.CanReceive, o.CreatedAt,
+            o.CanReceive, o.WorkflowInstanceId, o.RejectionReason, o.CreatedAt,
             o.Lines.Select(l => new PurchaseOrderLineDto(
                 l.Id, l.ProductVariantId, l.ProductCode, l.Description,
                 l.UnitOfMeasure, l.OrderedQty, l.ReceivedQty,
@@ -1235,41 +1240,22 @@ public class AccountsPayableService : IAccountsPayableService
     public async Task SubmitPOForApprovalAsync(Guid poId, string submittedBy, CancellationToken ct = default)
     {
         var po = await LoadPOWithLines(poId, ct);
-        var wi = new ERPKeys.Domain.Modules.Workflow.WorkflowInstance(
-            _org.OrganizationId, ERPKeys.Domain.Modules.Workflow.WorkflowDocumentType.PurchaseOrder,
-            poId, po.PONumber, po.GrandTotal, submittedBy);
-        _db.WorkflowInstances.Add(wi);
-        await _db.SaveChangesAsync(ct);
-        po.SubmitForApproval(wi.Id);
+        var requester = _user.Username;
+        var workflow = await _workflow.SubmitAsync(
+            new ERPKeys.Application.Modules.Workflow.Services.SubmitForApprovalRequest(
+            WorkflowDocumentType.PurchaseOrder,
+            poId,
+            po.PONumber,
+            po.GrandTotal,
+            requester,
+            RequireApproval: true), ct);
+        po.SubmitForApproval(workflow.Id);
         _audit.Add("AP", "Submitted for Approval", po.Id, "PurchaseOrder", null, new
         {
-            WorkflowInstanceId = wi.Id,
-            SubmittedBy = submittedBy,
+            WorkflowInstanceId = workflow.Id,
+            SubmittedBy = requester,
             Status = po.Status.ToString()
         });
-        await _db.SaveChangesAsync(ct);
-    }
-
-    public async Task POWorkflowApprovedAsync(Guid workflowInstanceId, CancellationToken ct = default)
-    {
-        var po = await _db.PurchaseOrders.IgnoreQueryFilters().Include(o => o.Lines)
-            .FirstOrDefaultAsync(o => o.WorkflowInstanceId == workflowInstanceId, ct)
-            ?? throw new InvalidOperationException("No PO linked to this workflow instance.");
-        po.WorkflowApproved();
-        await AddPurchaseOrderToInventoryAsync(po, ct);
-        _audit.Add("AP", "Approved", po.Id, "PurchaseOrder", null,
-            new { Status = po.Status.ToString() });
-        await _db.SaveChangesAsync(ct);
-    }
-
-    public async Task POWorkflowRejectedAsync(Guid workflowInstanceId, string reason, CancellationToken ct = default)
-    {
-        var po = await _db.PurchaseOrders.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(o => o.WorkflowInstanceId == workflowInstanceId, ct)
-            ?? throw new InvalidOperationException("No PO linked to this workflow instance.");
-        po.WorkflowRejected(reason);
-        _audit.Add("AP", "Rejected", po.Id, "PurchaseOrder", null,
-            new { Status = po.Status.ToString(), Reason = reason });
         await _db.SaveChangesAsync(ct);
     }
 

@@ -4,7 +4,7 @@ namespace ERPKeys.Domain.Modules.AccountsPayable;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 
 /// <summary>Lifecycle status — tracks physical receipt progress.</summary>
-public enum PurchaseOrderStatus { Draft, PendingApproval, Sent, PartiallyReceived, FullyReceived, Closed, Cancelled }
+public enum PurchaseOrderStatus { Draft, PendingApproval, Approved, Sent, PartiallyReceived, FullyReceived, Closed, Cancelled }
 
 /// <summary>Invoice status — independent of receive status (a PO can be partially invoiced and still receive more goods).</summary>
 public enum POInvoiceStatus { NotInvoiced, PartiallyInvoiced, FullyInvoiced }
@@ -65,15 +65,16 @@ public class PurchaseOrder : BaseEntity
 
     /// <summary>True when more goods can still be received (quantities not yet fully received and PO not closed/cancelled).</summary>
     public bool CanReceive =>
-        Status != PurchaseOrderStatus.Draft &&
-        Status != PurchaseOrderStatus.Closed &&
-        Status != PurchaseOrderStatus.Cancelled &&
+        (Status is PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived) &&
         _lines.Any(l => !l.IsFullyReceived);
 
     /// <summary>Recalculates receive status from line quantities. Safe to call at any invoice status.</summary>
     public void UpdateReceiptStatus()
     {
-        if (Status == PurchaseOrderStatus.Draft || Status == PurchaseOrderStatus.Closed || Status == PurchaseOrderStatus.Cancelled)
+        if (Status is not (
+            PurchaseOrderStatus.Sent or
+            PurchaseOrderStatus.PartiallyReceived or
+            PurchaseOrderStatus.FullyReceived))
             return;
 
         bool anyReceived = _lines.Any(l => l.ReceivedQty > 0);
@@ -102,9 +103,11 @@ public class PurchaseOrder : BaseEntity
     /// </summary>
     public void RecordInvoice(decimal invoicedAmount)
     {
-        if (Status == PurchaseOrderStatus.Draft || Status == PurchaseOrderStatus.Cancelled)
-            throw new InvalidOperationException("Cannot invoice a Draft or Cancelled PO.");
-        if (Status == PurchaseOrderStatus.Sent)
+        if (Status is PurchaseOrderStatus.Draft or
+            PurchaseOrderStatus.PendingApproval or
+            PurchaseOrderStatus.Approved or
+            PurchaseOrderStatus.Sent or
+            PurchaseOrderStatus.Cancelled)
             throw new InvalidOperationException("Goods must be received before invoicing.");
 
         var receivedValue = _lines.Sum(l => Math.Round(l.ReceivedQty * l.UnitCost * (1 + l.TaxRate / 100), 4));
@@ -161,12 +164,13 @@ public class PurchaseOrder : BaseEntity
         SetUpdated();
     }
 
-    /// <summary>Called by the workflow engine after all steps are approved — activates the PO.</summary>
+    /// <summary>Called by the workflow engine after all steps are approved.</summary>
     public void WorkflowApproved()
     {
         if (Status != PurchaseOrderStatus.PendingApproval)
             throw new InvalidOperationException("PO is not pending approval.");
-        Status = PurchaseOrderStatus.Sent;
+        Status = PurchaseOrderStatus.Approved;
+        RejectionReason = null;
         SetUpdated();
     }
 
@@ -182,9 +186,9 @@ public class PurchaseOrder : BaseEntity
 
     public void Send()
     {
-        // Direct-send path: for orgs without PO approval workflow configured
-        if (Status != PurchaseOrderStatus.Draft)
-            throw new InvalidOperationException("Only a Draft PO can be sent.");
+        if (Status != PurchaseOrderStatus.Approved)
+            throw new InvalidOperationException(
+                "The PO must be approved before it can be sent to the vendor.");
         if (!_lines.Any())
             throw new InvalidOperationException("Cannot send a PO with no lines.");
         Status = PurchaseOrderStatus.Sent;
@@ -203,6 +207,9 @@ public class PurchaseOrder : BaseEntity
 
     public void Cancel()
     {
+        if (Status == PurchaseOrderStatus.PendingApproval)
+            throw new InvalidOperationException(
+                "A PO awaiting approval must be rejected or recalled before it can be cancelled.");
         if (Status == PurchaseOrderStatus.FullyReceived || Status == PurchaseOrderStatus.Closed)
             throw new InvalidOperationException("Cannot cancel a PO that has been fully received or closed.");
         if (InvoiceStatus != POInvoiceStatus.NotInvoiced)

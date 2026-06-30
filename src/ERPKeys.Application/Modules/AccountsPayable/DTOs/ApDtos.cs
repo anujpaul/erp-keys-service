@@ -77,7 +77,8 @@ public record PurchaseOrderDto(Guid Id, string PONumber, Guid VendorId, string V
     DateTime OrderDate, DateTime? ExpectedDate, Guid? WarehouseId, string? WarehouseName,
     string Description, string Currency,
     string Status, string InvoiceStatus, decimal SubTotal, decimal TaxTotal, decimal GrandTotal,
-    decimal InvoicedAmount, bool CanReceive, DateTime CreatedAt,
+    decimal InvoicedAmount, bool CanReceive,
+    Guid? WorkflowInstanceId, string? RejectionReason, DateTime CreatedAt,
     IReadOnlyList<PurchaseOrderLineDto> Lines);
 
 public record AccountsPayableParametersDto(

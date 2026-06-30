@@ -408,23 +408,10 @@ public class AccountsPayableController : ControllerBase
     // ── PO Workflow ───────────────────────────────────────────────────────────
 
     [HttpPost("purchase-orders/{id:guid}/submit-for-approval")]
+    [Authorize(Policy = PermissionKeys.ApPurchaseOrderManage)]
     public async Task<IActionResult> SubmitPOForApproval(Guid id, [FromBody] SubmitForApprovalRequest req, CancellationToken ct)
     {
         try { await _svc.SubmitPOForApprovalAsync(id, req.SubmittedBy, ct); return NoContent(); }
-        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
-    }
-
-    [HttpPost("purchase-orders/workflow/{workflowInstanceId:guid}/approved")]
-    public async Task<IActionResult> POWorkflowApproved(Guid workflowInstanceId, CancellationToken ct)
-    {
-        try { await _svc.POWorkflowApprovedAsync(workflowInstanceId, ct); return NoContent(); }
-        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
-    }
-
-    [HttpPost("purchase-orders/workflow/{workflowInstanceId:guid}/rejected")]
-    public async Task<IActionResult> POWorkflowRejected(Guid workflowInstanceId, [FromBody] WorkflowOutcomeRequest req, CancellationToken ct)
-    {
-        try { await _svc.POWorkflowRejectedAsync(workflowInstanceId, req.Reason ?? string.Empty, ct); return NoContent(); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
