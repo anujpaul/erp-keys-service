@@ -3,8 +3,6 @@ using System.Text.Json.Serialization;
 using System.Security.Claims;
 using Microsoft.OpenApi.Models;
 
-
-
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Common.Services;
@@ -36,15 +34,10 @@ using ERPKeys.Worker.Workers;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
-using Pgvector.EntityFrameworkCore;
-//using Microsoft.OpenApi.Models;
-
-
 
 // ── Npgsql: treat DateTime(Unspecified) as UTC globally ──────────────────────
 // Angular sends dates as ISO strings (e.g. "2026-06-02") which .NET deserializes
@@ -55,7 +48,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── HTTP Context (needed for CurrentOrganizationService) ─────────────────────
 builder.Services.AddHttpContextAccessor();
-
 
 // ── Database ──────────────────────────────────────────────────────────────────
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")

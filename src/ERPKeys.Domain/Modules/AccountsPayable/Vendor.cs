@@ -80,4 +80,55 @@ public class Vendor : BaseEntity
     // Navigation — loaded via .Include() in queries
     public ICollection<VendorAddress> Addresses { get; private set; } = new List<VendorAddress>();
     public ICollection<VendorContact> Contacts  { get; private set; } = new List<VendorContact>();
+
+    public void InitializeAddressAndContactRecords()
+    {
+        if (Addresses.Count == 0)
+        {
+            AddInitialAddress("Billing Address", VendorAddressType.Billing,
+                BillingAddress, isPrimary: true);
+            AddInitialAddress("Shipping Address", VendorAddressType.Shipping,
+                ShippingAddress, isPrimary: Addresses.Count == 0);
+        }
+
+        if (Contacts.Count == 0 &&
+            (!string.IsNullOrWhiteSpace(Email) || !string.IsNullOrWhiteSpace(Phone)))
+        {
+            Contacts.Add(new VendorContact(
+                OrganizationId,
+                Id,
+                Name,
+                "Primary Contact",
+                Email,
+                Phone,
+                null,
+                isPrimary: true));
+        }
+    }
+
+    private void AddInitialAddress(
+        string label,
+        VendorAddressType addressType,
+        string? address,
+        bool isPrimary)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return;
+
+        var normalized = address.Trim();
+        var line1 = normalized.Length <= 300 ? normalized : normalized[..300];
+        var line2 = normalized.Length <= 300 ? null : normalized[300..];
+        Addresses.Add(new VendorAddress(
+            OrganizationId,
+            Id,
+            label,
+            addressType,
+            line1,
+            line2,
+            string.Empty,
+            null,
+            null,
+            string.Empty,
+            isPrimary));
+    }
 }

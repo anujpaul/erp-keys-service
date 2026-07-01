@@ -199,6 +199,7 @@ public class AccountsPayableService : IAccountsPayableService
         var vendor = new Vendor(_org.OrganizationId, $"VEND-{count:D5}", req.Name, req.Email, req.Phone,
             req.BillingAddress, req.Currency, req.PaymentTermsDays, req.TaxId,
             req.BillingAddress, req.ShippingAddress, req.Website, req.Notes);
+        vendor.InitializeAddressAndContactRecords();
         _db.Vendors.Add(vendor);
         await _db.SaveChangesAsync(ct);
         return ToVendorDto(vendor, 0);
