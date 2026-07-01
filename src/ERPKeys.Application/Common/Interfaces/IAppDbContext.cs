@@ -88,6 +88,7 @@ public interface IAppDbContext
     DbSet<SalesOrderLine>  SalesOrderLines   { get; }
     DbSet<ARInvoice>       ARInvoices        { get; }
     DbSet<ARPayment>       ARPayments        { get; }
+    DbSet<AccountsReceivableParameters> AccountsReceivableParameters { get; }
 
     // S2C additions
     DbSet<SalesQuotation>     SalesQuotations     { get; }

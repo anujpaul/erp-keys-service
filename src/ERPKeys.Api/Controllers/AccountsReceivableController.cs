@@ -25,6 +25,23 @@ public class AccountsReceivableController : ControllerBase
         _chargeCodes = chargeCodes;
     }
 
+    [HttpGet("parameters")]
+    public async Task<IActionResult> GetParameters(CancellationToken ct)
+        => Ok(await _svc.GetParametersAsync(ct));
+
+    [HttpPut("parameters")]
+    [Authorize(Policy = PermissionKeys.ArInvoiceManage)]
+    public async Task<IActionResult> UpdateParameters(
+        [FromBody] UpdateAccountsReceivableParametersRequest req,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.UpdateParametersAsync(req, ct)); }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("charge-codes")]
     public async Task<IActionResult> GetChargeCodes(
         [FromQuery] bool activeOnly, CancellationToken ct) =>

@@ -12,6 +12,12 @@ namespace ERPKeys.Application.Modules.AccountsReceivable.Services;
 
 public interface IAccountsReceivableService
 {
+    Task<AccountsReceivableParametersDto> GetParametersAsync(
+        CancellationToken ct = default);
+    Task<AccountsReceivableParametersDto> UpdateParametersAsync(
+        UpdateAccountsReceivableParametersRequest req,
+        CancellationToken ct = default);
+
     // Customers
     Task<IEnumerable<CustomerDto>> GetCustomersAsync(CancellationToken ct = default);
     Task<CustomerDto> CreateCustomerAsync(CreateCustomerRequest req, CancellationToken ct = default);
@@ -119,6 +125,52 @@ public class AccountsReceivableService : IAccountsReceivableService
         _db = db;
         _org = org;
         _audit = audit;
+    }
+
+    public async Task<AccountsReceivableParametersDto> GetParametersAsync(
+        CancellationToken ct = default)
+    {
+        var parameters = await _db.AccountsReceivableParameters
+            .FirstOrDefaultAsync(ct);
+        return parameters is null
+            ? new AccountsReceivableParametersDto(
+                Guid.Empty, _org.OrganizationId, false, 0)
+            : ToParametersDto(parameters);
+    }
+
+    public async Task<AccountsReceivableParametersDto> UpdateParametersAsync(
+        UpdateAccountsReceivableParametersRequest req,
+        CancellationToken ct = default)
+    {
+        var parameters = await _db.AccountsReceivableParameters
+            .FirstOrDefaultAsync(ct);
+        if (parameters is null)
+        {
+            parameters = new AccountsReceivableParameters(_org.OrganizationId);
+            _db.AccountsReceivableParameters.Add(parameters);
+        }
+
+        var before = new
+        {
+            parameters.AllowSalesOrderInvoiceVariance,
+            parameters.MaximumInvoiceVariancePercent
+        };
+        parameters.UpdateInvoiceVariancePolicy(
+            req.AllowSalesOrderInvoiceVariance,
+            req.MaximumInvoiceVariancePercent);
+        _audit.Add(
+            "AR",
+            "Parameters Updated",
+            parameters.Id,
+            nameof(AccountsReceivableParameters),
+            before,
+            new
+            {
+                parameters.AllowSalesOrderInvoiceVariance,
+                parameters.MaximumInvoiceVariancePercent
+            });
+        await _db.SaveChangesAsync(ct);
+        return ToParametersDto(parameters);
     }
 
     // ── Customers ─────────────────────────────────────────────────────────────
@@ -597,11 +649,53 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     public async Task<ARInvoiceDto> CreateInvoiceAsync(CreateARInvoiceRequest req, CancellationToken ct = default)
     {
+        SalesOrder? order = null;
+        decimal? variance = null;
+        decimal? maximumVariancePercent = null;
+        if (req.SalesOrderId.HasValue)
+        {
+            order = await _db.SalesOrders
+                .FirstOrDefaultAsync(
+                    item => item.Id == req.SalesOrderId.Value &&
+                        !item.IsDeleted, ct)
+                ?? throw new InvalidOperationException("Sales order not found.");
+            if (order.CustomerId != req.CustomerId)
+                throw new InvalidOperationException(
+                    "The invoice customer does not match the sales order customer.");
+            if (order.Status != SalesOrderStatus.Shipped)
+                throw new InvalidOperationException(
+                    "Only a Shipped sales order can be invoiced.");
+
+            var parameters = await _db.AccountsReceivableParameters
+                .FirstOrDefaultAsync(ct);
+            maximumVariancePercent =
+                parameters?.AllowSalesOrderInvoiceVariance == true
+                    ? parameters.MaximumInvoiceVariancePercent
+                    : 0;
+            var invoiceAmount =
+                req.SubTotal - req.DiscountAmount + req.TaxAmount;
+            variance = Math.Abs(invoiceAmount - order.GrandTotal);
+            InvoiceAmountVariancePolicy.EnsureWithinTolerance(
+                order.GrandTotal,
+                invoiceAmount,
+                maximumVariancePercent.Value);
+        }
+
         var count = await _db.ARInvoices.CountAsync(ct) + 1;
         var inv = new ARInvoice(_org.OrganizationId, $"INV-{count:D6}", req.CustomerId,
             req.InvoiceDate, req.DueDate, req.Description,
             req.SubTotal, req.TaxAmount, req.DiscountAmount, req.SalesOrderId);
         _db.ARInvoices.Add(inv);
+        order?.Invoice(inv.Id);
+        _audit.Add("AR", "Invoice Created", inv.Id, "ARInvoice", null, new
+        {
+            inv.InvoiceNumber,
+            req.SalesOrderId,
+            SalesOrderAmount = order?.GrandTotal,
+            InvoiceAmount = inv.TotalAmount,
+            Variance = variance,
+            MaximumVariancePercent = maximumVariancePercent
+        });
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.ARInvoices
@@ -1768,6 +1862,14 @@ public class AccountsReceivableService : IAccountsReceivableService
     }
 
     // ── Mapping helpers (S2C additions) ───────────────────────────────────────
+
+    private static AccountsReceivableParametersDto ToParametersDto(
+        AccountsReceivableParameters parameters) =>
+        new(
+            parameters.Id,
+            parameters.OrganizationId,
+            parameters.AllowSalesOrderInvoiceVariance,
+            parameters.MaximumInvoiceVariancePercent);
 
     private static QuotationSummaryDto ToQuotationSummaryDto(SalesQuotation q) =>
         new(q.Id, q.QuotationNumber, q.CustomerId, q.Customer?.Name ?? string.Empty,

@@ -114,6 +114,16 @@ public record PackingSlipDto(
 
 public record ApplyDiscountRequest(decimal DiscountPct);
 
+public record AccountsReceivableParametersDto(
+    Guid Id,
+    Guid OrganizationId,
+    bool AllowSalesOrderInvoiceVariance,
+    decimal MaximumInvoiceVariancePercent);
+
+public record UpdateAccountsReceivableParametersRequest(
+    bool AllowSalesOrderInvoiceVariance,
+    decimal MaximumInvoiceVariancePercent);
+
 // ── AR Invoice ────────────────────────────────────────────────────────────────
 public record ARInvoiceDto(Guid Id, string InvoiceNumber, Guid CustomerId,
     string CustomerName, Guid? SalesOrderId, string? SalesOrderNumber,

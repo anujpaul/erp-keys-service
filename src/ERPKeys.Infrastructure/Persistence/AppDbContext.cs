@@ -93,6 +93,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<SalesOrderLine>     SalesOrderLines     => Set<SalesOrderLine>();
     public DbSet<ARInvoice>          ARInvoices          => Set<ARInvoice>();
     public DbSet<ARPayment>          ARPayments          => Set<ARPayment>();
+    public DbSet<AccountsReceivableParameters> AccountsReceivableParameters =>
+        Set<AccountsReceivableParameters>();
     // S2C additions
     public DbSet<SalesQuotation>     SalesQuotations     => Set<SalesQuotation>();
     public DbSet<SalesQuotationLine> SalesQuotationLines => Set<SalesQuotationLine>();
@@ -275,6 +277,8 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.Entity<ARInvoice>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<ARPayment>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
+        modelBuilder.Entity<AccountsReceivableParameters>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
         modelBuilder.Entity<SalesQuotation>()
             .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));

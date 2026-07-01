@@ -108,6 +108,19 @@ public class ARInvoiceConfiguration : IEntityTypeConfiguration<ARInvoice>
     }
 }
 
+public class AccountsReceivableParametersConfiguration :
+    IEntityTypeConfiguration<AccountsReceivableParameters>
+{
+    public void Configure(EntityTypeBuilder<AccountsReceivableParameters> b)
+    {
+        b.ToTable("accounts_receivable_parameters");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.MaximumInvoiceVariancePercent)
+            .HasColumnType("numeric(8,4)");
+        b.HasIndex(e => e.OrganizationId).IsUnique();
+    }
+}
+
 public class ARPaymentConfiguration : IEntityTypeConfiguration<ARPayment>
 {
     public void Configure(EntityTypeBuilder<ARPayment> b)
