@@ -34,6 +34,7 @@ using ERPKeys.Worker.Workers;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.IdentityModel.Tokens;
@@ -48,6 +49,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── HTTP Context (needed for CurrentOrganizationService) ─────────────────────
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddDataProtection()
+    .SetApplicationName("ERPKeys");
 
 // ── Database ──────────────────────────────────────────────────────────────────
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -101,7 +104,7 @@ builder.Services.AddScoped<IRetailService, RetailService>();
 builder.Services.AddScoped<IRetailStatementService, RetailStatementService>();
 builder.Services.AddScoped<IMarketingService, MarketingService>();
 builder.Services.AddScoped<IPriceAgreementService, PriceAgreementService>();
-builder.Services.AddSingleton<IBlobStorageService, AzureBlobStorageService>();
+builder.Services.AddScoped<IBlobStorageService, AzureBlobStorageService>();
 builder.Services.AddSingleton<IFileShareService, AzureFileShareService>();
 
 // ── Hangfire (server runs inside the API process) ─────────────────────────────
@@ -127,14 +130,19 @@ builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISystemAdminService, SystemAdminService>();
+builder.Services.AddScoped<IIntegrationConfigurationService, IntegrationConfigurationService>();
+builder.Services.AddScoped<IIntegrationConfigurationReader>(sp =>
+    sp.GetRequiredService<IIntegrationConfigurationService>());
+builder.Services.AddSingleton<IIntegrationSecretProtector,
+    DataProtectionIntegrationSecretProtector>();
 builder.Services.AddHttpClient<IAddressLookupService, GoogleAddressLookupService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
-Func<int, bool> isEven = num => num %2 ==0;
+//Func<int, bool> isEven = num => num %2 ==0;
 
-System.Console.WriteLine($"201 is Even? : {isEven(201)}");
+//System.Console.WriteLine($"201 is Even? : {isEven(201)}");
 
 builder.Services.AddRateLimiter(options =>
 {

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Modules.SystemAdmin.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -14,16 +15,22 @@ public sealed class GoogleAddressLookupService : IAddressLookupService
         "id,formattedAddress,addressComponents";
 
     private readonly HttpClient _http;
-    private readonly string _apiKey;
+    private readonly IIntegrationConfigurationReader _integrations;
+    private readonly string _fallbackApiKey;
+    private readonly string _fallbackBaseUrl;
     private readonly ILogger<GoogleAddressLookupService> _logger;
 
     public GoogleAddressLookupService(
         HttpClient http,
         IConfiguration configuration,
+        IIntegrationConfigurationReader integrations,
         ILogger<GoogleAddressLookupService> logger)
     {
         _http = http;
-        _apiKey = configuration["GoogleMap:key"]?.Trim() ?? string.Empty;
+        _integrations = integrations;
+        _fallbackApiKey = configuration["GoogleMap:key"]?.Trim() ?? string.Empty;
+        _fallbackBaseUrl = configuration["GoogleMap:BaseUrl"]?.Trim()
+            ?? "https://places.googleapis.com/v1";
         _logger = logger;
     }
 
@@ -32,7 +39,7 @@ public sealed class GoogleAddressLookupService : IAddressLookupService
         string sessionToken,
         CancellationToken ct = default)
     {
-        EnsureConfigured();
+        var (apiKey, baseUrl) = await GetConfigurationAsync(ct);
 
         var normalizedInput = input.Trim();
         if (normalizedInput.Length < 4)
@@ -40,8 +47,8 @@ public sealed class GoogleAddressLookupService : IAddressLookupService
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            "https://places.googleapis.com/v1/places:autocomplete");
-        request.Headers.Add("X-Goog-Api-Key", _apiKey);
+            $"{baseUrl}/places:autocomplete");
+        request.Headers.Add("X-Goog-Api-Key", apiKey);
         request.Headers.Add("X-Goog-FieldMask", AutocompleteFieldMask);
         request.Content = JsonContent.Create(new
         {
@@ -74,13 +81,13 @@ public sealed class GoogleAddressLookupService : IAddressLookupService
         string sessionToken,
         CancellationToken ct = default)
     {
-        EnsureConfigured();
+        var (apiKey, baseUrl) = await GetConfigurationAsync(ct);
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"https://places.googleapis.com/v1/places/{Uri.EscapeDataString(placeId)}" +
+            $"{baseUrl}/places/{Uri.EscapeDataString(placeId)}" +
             $"?sessionToken={Uri.EscapeDataString(sessionToken)}");
-        request.Headers.Add("X-Goog-Api-Key", _apiKey);
+        request.Headers.Add("X-Goog-Api-Key", apiKey);
         request.Headers.Add("X-Goog-FieldMask", DetailsFieldMask);
 
         using var response = await _http.SendAsync(request, ct);
@@ -153,10 +160,19 @@ public sealed class GoogleAddressLookupService : IAddressLookupService
         return string.IsNullOrWhiteSpace(result) ? null : result;
     }
 
-    private void EnsureConfigured()
+    private async Task<(string ApiKey, string BaseUrl)> GetConfigurationAsync(
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_apiKey))
+        var configured = await _integrations.GetActiveAsync(
+            "AddressValidation", "GooglePlaces", ct);
+        var apiKey = configured?.Secrets.GetValueOrDefault("ApiKey") ?? _fallbackApiKey;
+        var baseUrl = configured?.Settings.GetValueOrDefault("BaseUrl") ?? _fallbackBaseUrl;
+        if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("Google address lookup is not configured.");
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed) ||
+            parsed.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("Google address lookup URL must use HTTPS.");
+        return (apiKey, baseUrl.TrimEnd('/'));
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)

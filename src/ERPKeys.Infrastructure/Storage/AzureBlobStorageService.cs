@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Modules.SystemAdmin.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -21,25 +22,32 @@ namespace ERPKeys.Infrastructure.Storage;
 /// </summary>
 public class AzureBlobStorageService : IBlobStorageService
 {
-    private readonly BlobServiceClient _client;
+    private readonly IIntegrationConfigurationReader? _integrations;
+    private readonly string? _fallbackConnectionString;
     private readonly ILogger<AzureBlobStorageService> _logger;
 
-    public AzureBlobStorageService(IConfiguration config,
+    public AzureBlobStorageService(
+        IConfiguration config,
+        IIntegrationConfigurationReader integrations,
         ILogger<AzureBlobStorageService> logger)
     {
         _logger = logger;
-        var connStr = config["AzureStorage:ConnectionString"]
-            ?? throw new InvalidOperationException(
-               "AzureStorage:ConnectionString is not configured. " +
-               "For local development, set it to 'UseDevelopmentStorage=true' (requires Azurite). " +
-               "For Azure, set the storage account connection string.");
-        _client = new BlobServiceClient(connStr);
+        _integrations = integrations;
+        _fallbackConnectionString = config["AzureStorage:ConnectionString"];
+    }
+
+    public AzureBlobStorageService(
+        IConfiguration config,
+        ILogger<AzureBlobStorageService> logger)
+    {
+        _logger = logger;
+        _fallbackConnectionString = config["AzureStorage:ConnectionString"];
     }
 
     public async Task<List<BlobFileInfo>> ListFilesAsync(string containerName, string prefix,
         string extension, CancellationToken ct = default)
     {
-        var container = _client.GetBlobContainerClient(containerName);
+        var container = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         
         var results   = new List<BlobFileInfo>();
 
@@ -58,7 +66,7 @@ public class AzureBlobStorageService : IBlobStorageService
     public async Task<string> DownloadToTempFileAsync(string containerName, string blobName,
         CancellationToken ct = default)
     {
-        var container  = _client.GetBlobContainerClient(containerName);
+        var container  = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         var blobClient = container.GetBlobClient(blobName);
 
         var ext      = Path.GetExtension(blobName);
@@ -72,7 +80,7 @@ public class AzureBlobStorageService : IBlobStorageService
     public async Task UploadAsync(string containerName, string blobName, byte[] data,
         string contentType = "application/octet-stream", CancellationToken ct = default)
     {
-        var container  = _client.GetBlobContainerClient(containerName);
+        var container  = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         var blobClient = container.GetBlobClient(blobName);
 
         using var ms = new MemoryStream(data);
@@ -83,7 +91,7 @@ public class AzureBlobStorageService : IBlobStorageService
     public async Task MoveAsync(string containerName, string sourceBlobName, string destBlobName,
         CancellationToken ct = default)
     {
-        var container = _client.GetBlobContainerClient(containerName);
+        var container = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         var src  = container.GetBlobClient(sourceBlobName);
         var dest = container.GetBlobClient(destBlobName);
 
@@ -99,7 +107,7 @@ public class AzureBlobStorageService : IBlobStorageService
     public async Task DeleteAsync(string containerName, string blobName,
         CancellationToken ct = default)
     {
-        var container  = _client.GetBlobContainerClient(containerName);
+        var container  = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         var blobClient = container.GetBlobClient(blobName);
         await blobClient.DeleteIfExistsAsync(cancellationToken: ct);
     }
@@ -107,10 +115,23 @@ public class AzureBlobStorageService : IBlobStorageService
     public async Task EnsureContainerExistsAsync(string containerName,
         CancellationToken ct = default)
     {
-        var container = _client.GetBlobContainerClient(containerName);
+        var container = (await GetClientAsync(ct)).GetBlobContainerClient(containerName);
         var created   = await container.CreateIfNotExistsAsync(
             PublicAccessType.None, cancellationToken: ct);
         if (created?.Value != null)
             _logger.LogInformation("Created Azure Blob container '{Container}'", containerName);
+    }
+
+    private async Task<BlobServiceClient> GetClientAsync(CancellationToken ct)
+    {
+        var configured = _integrations is null
+            ? null
+            : await _integrations.GetActiveAsync("Storage", "AzureBlob", ct);
+        var connectionString = configured?.Secrets.GetValueOrDefault("ConnectionString")
+            ?? _fallbackConnectionString;
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException(
+                "Azure Storage is not configured. Add an approved connection in System Admin > Integrations.");
+        return new BlobServiceClient(connectionString);
     }
 }

@@ -187,6 +187,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole>       UserRoles       => Set<UserRole>();
     public DbSet<AuditLogEntry>  AuditLogs       => Set<AuditLogEntry>();
+    public DbSet<IntegrationConfiguration> IntegrationConfigurations =>
+        Set<IntegrationConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -197,6 +199,11 @@ public class AppDbContext : DbContext, IAppDbContext
             .IncrementsBy(1_000)
             .HasMax(9_999_000);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        modelBuilder.Entity<IntegrationConfiguration>()
+            .HasQueryFilter(e => !e.IsDeleted &&
+                (_orgService == null ||
+                 _orgService.OrganizationId == Guid.Empty ||
+                 e.OrganizationId == _orgService.OrganizationId));
 
         // Exclude the obsolete AR Product tombstone — it has no table
         //modelBuilder.Ignore<ERPKeys.Domain.Modules.AccountsReceivable.Product>();

@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701184000_BackfillVendorAddressAndContactRecords")]
+    partial class BackfillVendorAddressAndContactRecords
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -8166,134 +8169,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
-            modelBuilder.Entity("ERPKeys.Domain.Modules.SystemAdmin.IntegrationConfiguration", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("code");
-
-                    b.Property<string>("ConnectorType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("connector_type");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("EncryptedSecrets")
-                        .HasColumnType("text")
-                        .HasColumnName("encrypted_secrets");
-
-                    b.Property<string>("FieldDefinitionsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("field_definitions_json");
-
-                    b.Property<bool>("IsConfigured")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_configured");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_enabled");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("name");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("organization_id");
-
-                    b.Property<string>("PendingEncryptedSecrets")
-                        .HasColumnType("text")
-                        .HasColumnName("pending_encrypted_secrets");
-
-                    b.Property<string>("PendingSettingsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("pending_settings_json");
-
-                    b.Property<string>("ReviewNotes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("review_notes");
-
-                    b.Property<string>("ReviewStatus")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("review_status");
-
-                    b.Property<DateTime?>("ReviewedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("reviewed_at");
-
-                    b.Property<string>("ReviewedBy")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("reviewed_by");
-
-                    b.Property<string>("ServiceCategory")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("service_category");
-
-                    b.Property<string>("SettingsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("settings_json");
-
-                    b.Property<DateTime>("SubmittedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("submitted_at");
-
-                    b.Property<string>("SubmittedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("submitted_by");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_integration_configurations");
-
-                    b.HasIndex("OrganizationId", "Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_integration_configurations_organization_id_code")
-                        .HasFilter("NOT is_deleted");
-
-                    b.HasIndex("OrganizationId", "ServiceCategory")
-                        .IsUnique()
-                        .HasDatabaseName("ix_integration_configurations_organization_id_service_category")
-                        .HasFilter("is_enabled AND NOT is_deleted");
-
-                    b.ToTable("integration_configurations", (string)null);
-                });
-
             modelBuilder.Entity("ERPKeys.Domain.Modules.SystemAdmin.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11119,3 +10994,4 @@ namespace ERPKeys.Infrastructure.Migrations
         }
     }
 }
+

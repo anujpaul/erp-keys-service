@@ -101,3 +101,34 @@ public class AuditLogEntryConfiguration : IEntityTypeConfiguration<AuditLogEntry
         b.HasIndex(e => e.UserId);
     }
 }
+
+public class IntegrationConfigurationEntityConfiguration
+    : IEntityTypeConfiguration<IntegrationConfiguration>
+{
+    public void Configure(EntityTypeBuilder<IntegrationConfiguration> b)
+    {
+        b.ToTable("integration_configurations");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.Code).HasMaxLength(50).IsRequired();
+        b.Property(e => e.Name).HasMaxLength(150).IsRequired();
+        b.Property(e => e.ServiceCategory).HasMaxLength(100).IsRequired();
+        b.Property(e => e.ConnectorType).HasMaxLength(100).IsRequired();
+        b.Property(e => e.Description).HasMaxLength(500);
+        b.Property(e => e.FieldDefinitionsJson).HasColumnType("jsonb").IsRequired();
+        b.Property(e => e.SettingsJson).HasColumnType("jsonb").IsRequired();
+        b.Property(e => e.EncryptedSecrets).HasColumnType("text");
+        b.Property(e => e.PendingSettingsJson).HasColumnType("jsonb");
+        b.Property(e => e.PendingEncryptedSecrets).HasColumnType("text");
+        b.Property(e => e.ReviewStatus).HasConversion<string>().HasMaxLength(30);
+        b.Property(e => e.SubmittedBy).HasMaxLength(100).IsRequired();
+        b.Property(e => e.ReviewedBy).HasMaxLength(100);
+        b.Property(e => e.ReviewNotes).HasMaxLength(1000);
+        b.HasIndex(e => new { e.OrganizationId, e.Code })
+            .IsUnique()
+            .HasFilter("NOT is_deleted");
+        b.HasIndex(e => new { e.OrganizationId, e.ServiceCategory })
+            .IsUnique()
+            .HasFilter("is_enabled AND NOT is_deleted");
+    }
+}

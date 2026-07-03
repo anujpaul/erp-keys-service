@@ -122,6 +122,7 @@ public interface IAppDbContext
     DbSet<RolePermission> RolePermissions { get; }
     DbSet<UserRole>       UserRoles       { get; }
     DbSet<AuditLogEntry>  AuditLogs       { get; }
+    DbSet<IntegrationConfiguration> IntegrationConfigurations { get; }
 
     // Data Management
     DbSet<ImportJob>      ImportJobs      { get; }

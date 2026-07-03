@@ -109,30 +109,36 @@ public interface IAccountsPayableService
     Task VoidCreditNoteAsync(Guid id, CancellationToken ct = default);
 }
 
-public class AccountsPayableService : IAccountsPayableService
+public class AccountsPayableService(
+        IAppDbContext _db,
+        ICurrentOrganizationService _org,
+        ICurrentUserService _user,
+        IDocumentAuditService _audit,
+        IPurchaseInventoryPostingService _inventoryPosting,
+        IWorkflowService _workflow) : IAccountsPayableService
 {
-    private readonly IAppDbContext _db;
-    private readonly ICurrentOrganizationService _org;
-    private readonly ICurrentUserService _user;
-    private readonly IDocumentAuditService _audit;
-    private readonly IPurchaseInventoryPostingService _inventoryPosting;
-    private readonly IWorkflowService _workflow;
+    //private readonly IAppDbContext _db;
+    //private readonly ICurrentOrganizationService _org;
+    //private readonly ICurrentUserService _user;
+    //private readonly IDocumentAuditService _audit;
+    //private readonly IPurchaseInventoryPostingService _inventoryPosting;
+    //private readonly IWorkflowService _workflow;
 
-    public AccountsPayableService(
-        IAppDbContext db,
-        ICurrentOrganizationService org,
-        ICurrentUserService user,
-        IDocumentAuditService audit,
-        IPurchaseInventoryPostingService inventoryPosting,
-        IWorkflowService workflow)
-    {
-        _db = db;
-        _org = org;
-        _user = user;
-        _audit = audit;
-        _inventoryPosting = inventoryPosting;
-        _workflow = workflow;
-    }
+    //public AccountsPayableService(
+    //    IAppDbContext db,
+    //    ICurrentOrganizationService org,
+    //    ICurrentUserService user,
+    //    IDocumentAuditService audit,
+    //    IPurchaseInventoryPostingService inventoryPosting,
+    //    IWorkflowService workflow)
+    //{
+    //    _db = db;
+    //    _org = org;
+    //    _user = user;
+    //    _audit = audit;
+    //    _inventoryPosting = inventoryPosting;
+    //    _workflow = workflow;
+    //}
 
     public async Task<AccountsPayableParametersDto> GetParametersAsync(
         CancellationToken ct = default)

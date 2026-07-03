@@ -1,14 +1,10 @@
-using ERPKeys.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace ERPKeys.Infrastructure.Migrations;
 
-[DbContext(typeof(AppDbContext))]
-[Migration("20260701184000_BackfillVendorAddressAndContactRecords")]
-public class BackfillVendorAddressAndContactRecords : Migration
+public partial class BackfillVendorAddressAndContactRecords : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

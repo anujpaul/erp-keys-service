@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using ERPKeys.Application.Modules.Rag;
+using ERPKeys.Application.Modules.SystemAdmin.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -12,53 +13,56 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
 {
     private readonly HttpClient _http;
     private readonly ILogger<OpenAiRagClient> _logger;
-    private readonly string _apiKey;
-    private readonly string _embeddingModel;
-    private readonly string _chatModel;
-    private readonly int _embeddingDimensions;
+    private readonly IIntegrationConfigurationReader _integrations;
+    private readonly OpenAiConfiguration _fallback;
 
     public OpenAiRagClient(
         HttpClient http,
         IConfiguration configuration,
+        IIntegrationConfigurationReader integrations,
         ILogger<OpenAiRagClient> logger)
     {
         _http = http;
         _logger = logger;
-        _apiKey = configuration["OpenAI:ApiKey"]?.Trim() ?? string.Empty;
-        _embeddingModel = configuration["OpenAI:EmbeddingModel"]?.Trim()
-            ?? "text-embedding-3-small";
-        _chatModel = configuration["OpenAI:ChatModel"]?.Trim() ?? "gpt-5-mini";
-        _embeddingDimensions = configuration.GetValue("OpenAI:EmbeddingDimensions", 1536);
+        _integrations = integrations;
+        _fallback = new OpenAiConfiguration(
+            configuration["OpenAI:ApiKey"]?.Trim() ?? string.Empty,
+            configuration["OpenAI:EmbeddingModel"]?.Trim() ?? "text-embedding-3-small",
+            configuration["OpenAI:ChatModel"]?.Trim() ?? "gpt-5-mini",
+            configuration.GetValue("OpenAI:EmbeddingDimensions", 1536),
+            configuration["OpenAI:BaseUrl"]?.Trim() ?? "https://api.openai.com/");
     }
 
     public async Task<IReadOnlyList<float[]>> CreateEmbeddingsAsync(
         IReadOnlyList<string> inputs,
         CancellationToken ct = default)
     {
-        EnsureConfigured();
+        var configuration = await GetConfigurationAsync(ct);
         if (inputs.Count == 0)
             return [];
 
         var results = new List<float[]>(inputs.Count);
         foreach (var batch in inputs.Chunk(64))
-            results.AddRange(await CreateEmbeddingBatchAsync(batch, ct));
+            results.AddRange(await CreateEmbeddingBatchAsync(batch, configuration, ct));
         return results;
     }
 
     private async Task<IReadOnlyList<float[]>> CreateEmbeddingBatchAsync(
         IReadOnlyList<string> inputs,
+        OpenAiConfiguration configuration,
         CancellationToken ct)
     {
         using var request = CreateRequest(
             HttpMethod.Post,
-            "v1/embeddings",
+            new Uri(new Uri(configuration.BaseUrl), "v1/embeddings"),
             new
             {
-                model = _embeddingModel,
+                model = configuration.EmbeddingModel,
                 input = inputs,
-                dimensions = _embeddingDimensions,
+                dimensions = configuration.EmbeddingDimensions,
                 encoding_format = "float"
-            });
+            },
+            configuration.ApiKey);
         using var response = await _http.SendAsync(request, ct);
         await EnsureSuccessAsync(response, ct);
 
@@ -79,7 +83,7 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
         IReadOnlyList<RagConversationTurnDto>? history = null,
         CancellationToken ct = default)
     {
-        EnsureConfigured();
+        var configuration = await GetConfigurationAsync(ct);
         var contextText = new StringBuilder();
         for (var index = 0; index < context.Count; index++)
         {
@@ -96,10 +100,10 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
 
         using var request = CreateRequest(
             HttpMethod.Post,
-            "v1/responses",
+            new Uri(new Uri(configuration.BaseUrl), "v1/responses"),
             new
             {
-                model = _chatModel,
+                model = configuration.ChatModel,
                 instructions =
                     "You are the ERP Keys knowledge assistant. Answer only from the supplied " +
                     "organization knowledge-base excerpts. If the answer is not supported by " +
@@ -116,7 +120,8 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
                     $"Knowledge-base excerpts:\n{contextText}",
                 reasoning = new { effort = "low" },
                 max_output_tokens = 1_800
-            });
+            },
+            configuration.ApiKey);
         using var response = await _http.SendAsync(request, ct);
         await EnsureSuccessAsync(response, ct);
 
@@ -132,10 +137,14 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
             : text.Trim();
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method, string path, object body)
+    private static HttpRequestMessage CreateRequest(
+        HttpMethod method,
+        Uri uri,
+        object body,
+        string apiKey)
     {
-        var request = new HttpRequestMessage(method, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        var request = new HttpRequestMessage(method, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Content = JsonContent.Create(body);
         return request;
     }
@@ -175,11 +184,37 @@ public sealed class OpenAiRagClient : IOpenAiRagClient
         return reason.GetString() == "max_output_tokens";
     }
 
-    private void EnsureConfigured()
+    private async Task<OpenAiConfiguration> GetConfigurationAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_apiKey))
+        var configured = await _integrations.GetActiveAsync(
+            "LLM", "OpenAICompatible", ct);
+        var apiKey = configured?.Secrets.GetValueOrDefault("ApiKey") ?? _fallback.ApiKey;
+        var baseUrl = configured?.Settings.GetValueOrDefault("BaseUrl") ?? _fallback.BaseUrl;
+        var embeddingModel = configured?.Settings.GetValueOrDefault("EmbeddingModel")
+            ?? _fallback.EmbeddingModel;
+        var chatModel = configured?.Settings.GetValueOrDefault("ChatModel")
+            ?? _fallback.ChatModel;
+        var dimensionsText = configured?.Settings.GetValueOrDefault("EmbeddingDimensions");
+        var dimensions = int.TryParse(dimensionsText, out var parsedDimensions)
+            ? parsedDimensions
+            : _fallback.EmbeddingDimensions;
+
+        if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("OpenAI is not configured.");
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed) ||
+            parsed.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("OpenAI base URL must use HTTPS.");
+
+        return new OpenAiConfiguration(
+            apiKey, embeddingModel, chatModel, dimensions, baseUrl.TrimEnd('/') + "/");
     }
+
+    private sealed record OpenAiConfiguration(
+        string ApiKey,
+        string EmbeddingModel,
+        string ChatModel,
+        int EmbeddingDimensions,
+        string BaseUrl);
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
