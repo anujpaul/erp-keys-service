@@ -1,29 +1,24 @@
-using System.Text;
-using System.Text.Json.Serialization;
-using System.Security.Claims;
-using Microsoft.OpenApi.Models;
-
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Common.Services;
 using ERPKeys.Application.Modules.AccountsPayable.Services;
 using ERPKeys.Application.Modules.AccountsReceivable.Services;
-using ERPKeys.Application.Modules.DataManagement.Services;
-using ERPKeys.Application.Modules.GeneralLedger.Services;
-using ERPKeys.Application.Modules.Organization.Services;
-using ERPKeys.Application.Modules.ProductManagement.Services;
-using ERPKeys.Application.Modules.InventoryManagement.Services;
-using ERPKeys.Application.Modules.Workflow.Services;
-using ERPKeys.Application.Modules.Expenses.Services;
 using ERPKeys.Application.Modules.CashBank;
-using ERPKeys.Application.Modules.Payments;
 using ERPKeys.Application.Modules.Charges;
+using ERPKeys.Application.Modules.DataManagement.Services;
+using ERPKeys.Application.Modules.Expenses.Services;
 using ERPKeys.Application.Modules.FixedAssets;
-using ERPKeys.Application.Modules.WarehouseManagement;
+using ERPKeys.Application.Modules.GeneralLedger.Services;
+using ERPKeys.Application.Modules.InventoryManagement.Services;
 using ERPKeys.Application.Modules.Marketing.Services;
+using ERPKeys.Application.Modules.Organization.Services;
+using ERPKeys.Application.Modules.Payments;
+using ERPKeys.Application.Modules.ProductManagement.Services;
+using ERPKeys.Application.Modules.Rag;
 using ERPKeys.Application.Modules.Retail.Services;
 using ERPKeys.Application.Modules.SystemAdmin.Services;
-using ERPKeys.Application.Modules.Rag;
+using ERPKeys.Application.Modules.WarehouseManagement;
+using ERPKeys.Application.Modules.Workflow.Services;
 using ERPKeys.Infrastructure.Modules.Rag;
 using ERPKeys.Infrastructure.Persistence;
 using ERPKeys.Infrastructure.Persistence.Seed;
@@ -37,6 +32,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 // ── Npgsql: treat DateTime(Unspecified) as UTC globally ──────────────────────
@@ -240,6 +239,20 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()));
+//----Caching-------------------------------------------------------------
+//builder.Services.AddMemoryCache(options =>
+//{
+//    options.SizeLimit = 10;
+//});
+
+var redisPassword = builder.Configuration.GetValue<string>("RedisCache:key");
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = $"erkeys.centralus.redis.azure.net:10000,password={redisPassword},ssl=True,abortConnect=False";
+    options.InstanceName = "ERPKeys_";
+});
+
 
 var app = builder.Build();
 

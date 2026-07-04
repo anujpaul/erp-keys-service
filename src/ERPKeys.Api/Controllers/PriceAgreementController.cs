@@ -9,7 +9,7 @@ namespace ERPKeys.Api.Controllers;
 [ApiController]
 [Route("api/price-agreements")]
 [Authorize]
-[Authorize(Policy = PermissionKeys.MarketingAccess)]
+[Authorize(Policy = PermissionKeys.ProductAccess)]
 [Produces("application/json")]
 public class PriceAgreementController : ControllerBase
 {

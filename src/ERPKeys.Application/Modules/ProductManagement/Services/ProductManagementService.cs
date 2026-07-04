@@ -2,6 +2,10 @@ using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Modules.ProductManagement.DTOs;
 using ERPKeys.Domain.Modules.ProductManagement;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace ERPKeys.Application.Modules.ProductManagement.Services;
 
@@ -64,11 +68,13 @@ public class ProductManagementService : IProductManagementService
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
+    private readonly IDistributedCache _cache;
 
-    public ProductManagementService(IAppDbContext db, ICurrentOrganizationService org)
+    public ProductManagementService(IAppDbContext db, ICurrentOrganizationService org, IDistributedCache cache)
     {
         _db = db;
         _org = org;
+        _cache = cache;
     }
 
     // ── Categories ────────────────────────────────────────────────────────────
@@ -274,6 +280,16 @@ public class ProductManagementService : IProductManagementService
 
     public async Task<ProductDto?> GetProductAsync(Guid id, CancellationToken ct = default)
     {
+        string cacheKey = $"Product_{id}";
+
+        var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
+
+        if(cachedJson is not null)
+        {
+            return JsonSerializer.Deserialize<ProductDto>(cachedJson);
+        }
+
+
         var p = await _db.CatalogProducts
             .Include(p => p.Category)
             .Include(p => p.Brand)
@@ -292,8 +308,22 @@ public class ProductManagementService : IProductManagementService
                 .FirstOrDefaultAsync(v => v.Id == p.PreferredVendorId.Value && !v.IsDeleted, ct);
             preferredVendorName = vendor?.Name;
         }
-        return MapProduct(p, preferredVendorName);
+        var dto = MapProduct(p, preferredVendorName);
+
+        if (dto is not null)
+        {
+            var json = JsonSerializer.Serialize(dto);
+
+            await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+            {
+                SlidingExpiration = TimeSpan.FromMinutes(10),
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
+            }, ct);
+        }
+
+        return dto;
     }
+
 
     public async Task<ProductDto> CreateProductAsync(CreateProductRequest req, CancellationToken ct = default)
     {
@@ -335,6 +365,7 @@ public class ProductManagementService : IProductManagementService
             pt, gt, req.Tags, req.ImageUrl,
             taxRateOverride: req.TaxRateOverride);
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync($"Product_{id}");
     }
 
     public async Task ChangeProductStatusAsync(Guid id, string status, CancellationToken ct = default)

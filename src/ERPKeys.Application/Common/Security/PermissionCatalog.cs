@@ -130,7 +130,7 @@ public static class PermissionCatalog
         P(PermissionKeys.DataExport, "Data Management", "Exports", "View", "Export business data and templates"),
         P(PermissionKeys.DataJobsManage, "Data Management", "Batch jobs", "Manage", "Create, schedule, and trigger batch jobs"),
 
-        P(PermissionKeys.MarketingAccess, "Marketing", "Marketing", "Access", "Use marketing and trade agreement features"),
+        P(PermissionKeys.MarketingAccess, "Marketing", "Marketing", "Access", "Use campaign, promotion, and loyalty features"),
         P(PermissionKeys.OmniChannelAccess, "OmniChannel", "OmniChannel", "Access", "Use channel order and fulfillment features"),
         P(PermissionKeys.WorkflowAccess, "Approvals", "Workflow", "Access", "Use approval inbox and workflow actions"),
         P(PermissionKeys.ExpenseAccess, "Expenses", "Expenses", "Access", "Use expense management"),
