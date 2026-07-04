@@ -31,6 +31,7 @@ using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Security.Claims;
@@ -245,11 +246,18 @@ builder.Services.AddCors(options =>
 //    options.SizeLimit = 10;
 //});
 
-var redisPassword = builder.Configuration.GetValue<string>("RedisCache:key");
+var cache = builder.Configuration.GetSection("RedisCache");
+
+var cacheServer = cache["server"];
+var cacheKey = cache["key"];
+var cacheport = cache["port"];
+
+
+
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = $"erkeys.centralus.redis.azure.net:10000,password={redisPassword},ssl=True,abortConnect=False";
+    options.Configuration = $"{cacheServer}:{cacheport},password={cacheKey},abortConnect=False";
     options.InstanceName = "ERPKeys_";
 });
 

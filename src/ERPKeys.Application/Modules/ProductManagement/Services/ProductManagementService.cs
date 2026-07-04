@@ -4,6 +4,7 @@ using ERPKeys.Domain.Modules.ProductManagement;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -69,12 +70,14 @@ public class ProductManagementService : IProductManagementService
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
     private readonly IDistributedCache _cache;
+    private readonly ILogger<ProductManagementService> _logger;
 
-    public ProductManagementService(IAppDbContext db, ICurrentOrganizationService org, IDistributedCache cache)
+    public ProductManagementService(IAppDbContext db, ICurrentOrganizationService org, IDistributedCache cache, ILogger<ProductManagementService> logger)
     {
         _db = db;
         _org = org;
         _cache = cache;
+        _logger = logger;
     }
 
     // ── Categories ────────────────────────────────────────────────────────────
@@ -281,14 +284,22 @@ public class ProductManagementService : IProductManagementService
     public async Task<ProductDto?> GetProductAsync(Guid id, CancellationToken ct = default)
     {
         string cacheKey = $"Product_{id}";
-
-        var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
-
-        if(cachedJson is not null)
+        bool cacheFailed = false;
+        try
         {
-            return JsonSerializer.Deserialize<ProductDto>(cachedJson);
-        }
+            var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
 
+            if (cachedJson is not null)
+            {
+                return JsonSerializer.Deserialize<ProductDto>(cachedJson);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogInformation($"Exception occured {ex.Message}");
+            cacheFailed = true;
+
+        }
 
         var p = await _db.CatalogProducts
             .Include(p => p.Category)
@@ -299,28 +310,37 @@ public class ProductManagementService : IProductManagementService
             .Where(p => p.Id == id && !p.IsDeleted)
             .FirstOrDefaultAsync(ct);
 
-        if (p is null) return null;
+            if (p is null) return null;
 
-        string? preferredVendorName = null;
-        if (p.PreferredVendorId.HasValue)
-        {
-            var vendor = await _db.Vendors
-                .FirstOrDefaultAsync(v => v.Id == p.PreferredVendorId.Value && !v.IsDeleted, ct);
-            preferredVendorName = vendor?.Name;
-        }
-        var dto = MapProduct(p, preferredVendorName);
-
-        if (dto is not null)
-        {
-            var json = JsonSerializer.Serialize(dto);
-
-            await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+            string? preferredVendorName = null;
+            if (p.PreferredVendorId.HasValue)
             {
-                SlidingExpiration = TimeSpan.FromMinutes(10),
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
-            }, ct);
-        }
+                var vendor = await _db.Vendors
+                    .FirstOrDefaultAsync(v => v.Id == p.PreferredVendorId.Value && !v.IsDeleted, ct);
+                preferredVendorName = vendor?.Name;
+            }
+            var dto = MapProduct(p, preferredVendorName);
 
+            if (dto is not null && cacheFailed != true)
+            {
+
+
+                try
+                {
+                    var json = JsonSerializer.Serialize(dto);
+
+                    await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromMinutes(10),
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
+                    }, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogInformation($"Cache write failed — not fatal, we still have the DB result to return. Exception Message : {ex.Message}");
+                }
+            }
+        
         return dto;
     }
 
