@@ -246,18 +246,18 @@ builder.Services.AddCors(options =>
 //    options.SizeLimit = 10;
 //});
 
-var cache = builder.Configuration.GetSection("RedisCache");
+var redisConfig = builder.Configuration.GetSection("RedisCache");
 
-var cacheServer = cache["server"];
-var cacheKey = cache["key"];
-var cacheport = cache["port"];
-
-
-
+var cacheServer = redisConfig["server"];
+var cacheKey = redisConfig["key"];
+//var cacheport = redisConfig.GetValue<int>("port", 6379);
+//var useSsl = redisConfig.GetValue<bool>("useSsl", false);
+var cacheport = redisConfig["port"];
+var useSsl = redisConfig["useSsl"];
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = $"{cacheServer}:{cacheport},password={cacheKey},abortConnect=False";
+    options.Configuration = $"{cacheServer}:{cacheport},user=default,password={cacheKey},abortConnect=False";
     options.InstanceName = "ERPKeys_";
 });
 

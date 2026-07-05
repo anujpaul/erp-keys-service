@@ -331,8 +331,8 @@ public class ProductManagementService : IProductManagementService
 
                     await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
                     {
-                        SlidingExpiration = TimeSpan.FromMinutes(10),
-                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
+                        SlidingExpiration = TimeSpan.FromHours(12),
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
                     }, ct);
                 }
                 catch (Exception ex)
