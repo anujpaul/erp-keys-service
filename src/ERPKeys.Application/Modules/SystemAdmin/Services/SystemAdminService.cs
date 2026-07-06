@@ -289,6 +289,7 @@ public class SystemAdminService : ISystemAdminService
     private static UserDto ToUserDto(AppUser u) => new(
         u.Id, u.OrganizationId, u.PreferredOrganizationId, u.Username, u.Email, u.FullName,
         u.EmployeeId, u.JobTitle, u.Department, u.Phone, u.Timezone, u.Locale,
+        u.HeaderThemeId, u.SidebarThemeId,
         u.AddressLine1, u.AddressLine2, u.City, u.State, u.PostalCode, u.Country,
         u.Status.ToString(), u.LastLoginAt,
         u.UserRoles.Where(r => r.Role != null).Select(r => r.Role!.Name).ToList(),

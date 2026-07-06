@@ -1,4 +1,5 @@
 using ERPKeys.Domain.Modules.AccountsReceivable;
+using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -118,6 +119,20 @@ public class AccountsReceivableParametersConfiguration :
         b.Property(e => e.MaximumInvoiceVariancePercent)
             .HasColumnType("numeric(8,4)");
         b.HasIndex(e => e.OrganizationId).IsUnique();
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.TradeReceivableAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.SalesRevenueAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.SalesTaxPayableAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.CashAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.BankAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.CostOfGoodsSoldAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Account>().WithMany()
+            .HasForeignKey(e => e.InventoryAccountId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

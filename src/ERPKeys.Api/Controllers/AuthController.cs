@@ -98,6 +98,26 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Update the currently authenticated user's appearance preferences.</summary>
+    [HttpPut("appearance")]
+    [Authorize]
+    public async Task<IActionResult> UpdateAppearance(
+        [FromBody] UpdateAppearanceRequest req,
+        CancellationToken ct)
+    {
+        try
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                 ?? User.FindFirstValue("sub")
+                                 ?? throw new InvalidOperationException("User ID claim missing."));
+            return Ok(await _auth.UpdateAppearanceAsync(userId, req, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Get the currently authenticated user's profile.</summary>
     [HttpGet("me")]
     [Authorize]

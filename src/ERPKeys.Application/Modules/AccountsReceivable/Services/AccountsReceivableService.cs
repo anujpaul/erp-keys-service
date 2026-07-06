@@ -134,7 +134,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             .FirstOrDefaultAsync(ct);
         return parameters is null
             ? new AccountsReceivableParametersDto(
-                Guid.Empty, _org.OrganizationId, false, 0)
+                Guid.Empty, _org.OrganizationId, false, 0,
+                null, null, null, null, null, null, null)
             : ToParametersDto(parameters);
     }
 
@@ -153,11 +154,38 @@ public class AccountsReceivableService : IAccountsReceivableService
         var before = new
         {
             parameters.AllowSalesOrderInvoiceVariance,
-            parameters.MaximumInvoiceVariancePercent
+            parameters.MaximumInvoiceVariancePercent,
+            parameters.TradeReceivableAccountId,
+            parameters.SalesRevenueAccountId,
+            parameters.SalesTaxPayableAccountId,
+            parameters.CashAccountId,
+            parameters.BankAccountId,
+            parameters.CostOfGoodsSoldAccountId,
+            parameters.InventoryAccountId
         };
         parameters.UpdateInvoiceVariancePolicy(
             req.AllowSalesOrderInvoiceVariance,
             req.MaximumInvoiceVariancePercent);
+        await ValidatePostingAccountsAsync(
+            new[]
+            {
+                req.TradeReceivableAccountId,
+                req.SalesRevenueAccountId,
+                req.SalesTaxPayableAccountId,
+                req.CashAccountId,
+                req.BankAccountId,
+                req.CostOfGoodsSoldAccountId,
+                req.InventoryAccountId
+            },
+            ct);
+        parameters.UpdatePostingAccounts(
+            req.TradeReceivableAccountId,
+            req.SalesRevenueAccountId,
+            req.SalesTaxPayableAccountId,
+            req.CashAccountId,
+            req.BankAccountId,
+            req.CostOfGoodsSoldAccountId,
+            req.InventoryAccountId);
         _audit.Add(
             "AR",
             "Parameters Updated",
@@ -167,7 +195,14 @@ public class AccountsReceivableService : IAccountsReceivableService
             new
             {
                 parameters.AllowSalesOrderInvoiceVariance,
-                parameters.MaximumInvoiceVariancePercent
+                parameters.MaximumInvoiceVariancePercent,
+                parameters.TradeReceivableAccountId,
+                parameters.SalesRevenueAccountId,
+                parameters.SalesTaxPayableAccountId,
+                parameters.CashAccountId,
+                parameters.BankAccountId,
+                parameters.CostOfGoodsSoldAccountId,
+                parameters.InventoryAccountId
             });
         await _db.SaveChangesAsync(ct);
         return ToParametersDto(parameters);
@@ -615,8 +650,14 @@ public class AccountsReceivableService : IAccountsReceivableService
 
         var postingContext = await LoadJournalPostingContextAsync(
             invoice.InvoiceDate, invoice.OrganizationId, ct);
+        var parameters = await LoadAccountsReceivableParametersAsync(ct);
         var accounts = await LoadPostingAccountsAsync(
-            new[] { "1210", "4100", "2210" },
+            new Dictionary<string, Guid?>
+            {
+                ["TradeReceivable"] = parameters.TradeReceivableAccountId,
+                ["SalesRevenue"] = parameters.SalesRevenueAccountId,
+                ["SalesTaxPayable"] = parameters.SalesTaxPayableAccountId
+            },
             invoice.OrganizationId,
             postingContext.Ledger.ChartOfAccountsId,
             ct);
@@ -1121,8 +1162,14 @@ public class AccountsReceivableService : IAccountsReceivableService
 
         var postingContext = await LoadJournalPostingContextAsync(
             invoice.InvoiceDate, invoice.OrganizationId, ct);
+        var parameters = await LoadAccountsReceivableParametersAsync(ct);
         var accounts = await LoadPostingAccountsAsync(
-            new[] { "1210", "4100", "2210" },
+            new Dictionary<string, Guid?>
+            {
+                ["TradeReceivable"] = parameters.TradeReceivableAccountId,
+                ["SalesRevenue"] = parameters.SalesRevenueAccountId,
+                ["SalesTaxPayable"] = parameters.SalesTaxPayableAccountId
+            },
             invoice.OrganizationId,
             postingContext.Ledger.ChartOfAccountsId,
             ct);
@@ -1149,16 +1196,16 @@ public class AccountsReceivableService : IAccountsReceivableService
         var lines = new List<ARInvoicePostingLineDto>
         {
             new(
-                accounts["1210"].Id,
-                accounts["1210"].AccountNumber,
-                accounts["1210"].Name,
+                accounts["TradeReceivable"].Id,
+                accounts["TradeReceivable"].AccountNumber,
+                accounts["TradeReceivable"].Name,
                 $"Trade receivable - {invoice.InvoiceNumber}",
                 invoice.TotalAmount,
                 0m),
             new(
-                accounts["4100"].Id,
-                accounts["4100"].AccountNumber,
-                accounts["4100"].Name,
+                accounts["SalesRevenue"].Id,
+                accounts["SalesRevenue"].AccountNumber,
+                accounts["SalesRevenue"].Name,
                 $"Sales revenue - {invoice.InvoiceNumber}",
                 0m,
                 invoice.SubTotal - invoice.DiscountAmount)
@@ -1167,9 +1214,9 @@ public class AccountsReceivableService : IAccountsReceivableService
         if (invoice.TaxAmount > 0)
         {
             lines.Add(new ARInvoicePostingLineDto(
-                accounts["2210"].Id,
-                accounts["2210"].AccountNumber,
-                accounts["2210"].Name,
+                accounts["SalesTaxPayable"].Id,
+                accounts["SalesTaxPayable"].AccountNumber,
+                accounts["SalesTaxPayable"].Name,
                 $"Sales tax payable - {invoice.InvoiceNumber}",
                 0m,
                 invoice.TaxAmount));
@@ -1181,11 +1228,18 @@ public class AccountsReceivableService : IAccountsReceivableService
     private async Task<JournalEntry> CreatePaymentJournalAsync(
         ARPayment payment, ARInvoice invoice, CancellationToken ct)
     {
-        var cashAccountNumber = payment.PaymentMethod == PaymentMethod.Cash ? "1110" : "1120";
         var postingContext = await LoadJournalPostingContextAsync(
             payment.PaymentDate, payment.OrganizationId, ct);
+        var parameters = await LoadAccountsReceivableParametersAsync(ct);
+        var receiptAccountId = payment.PaymentMethod == PaymentMethod.Cash
+            ? parameters.CashAccountId
+            : parameters.BankAccountId;
         var accounts = await LoadPostingAccountsAsync(
-            new[] { cashAccountNumber, "1210" },
+            new Dictionary<string, Guid?>
+            {
+                ["Receipt"] = receiptAccountId,
+                ["TradeReceivable"] = parameters.TradeReceivableAccountId
+            },
             payment.OrganizationId,
             postingContext.Ledger.ChartOfAccountsId,
             ct);
@@ -1199,9 +1253,9 @@ public class AccountsReceivableService : IAccountsReceivableService
             postingContext,
             ct);
 
-        journal.AddLine(accounts[cashAccountNumber].Id, $"Receipt for {invoice.InvoiceNumber}",
+        journal.AddLine(accounts["Receipt"].Id, $"Receipt for {invoice.InvoiceNumber}",
             payment.Amount, 0m);
-        journal.AddLine(accounts["1210"].Id, $"Settle receivable - {invoice.InvoiceNumber}",
+        journal.AddLine(accounts["TradeReceivable"].Id, $"Settle receivable - {invoice.InvoiceNumber}",
             0m, payment.Amount);
         journal.Post();
         return journal;
@@ -1212,8 +1266,13 @@ public class AccountsReceivableService : IAccountsReceivableService
     {
         var postingContext = await LoadJournalPostingContextAsync(
             shipDate, order.OrganizationId, ct);
+        var parameters = await LoadAccountsReceivableParametersAsync(ct);
         var accounts = await LoadPostingAccountsAsync(
-            new[] { "5100", "1310" },
+            new Dictionary<string, Guid?>
+            {
+                ["CostOfGoodsSold"] = parameters.CostOfGoodsSoldAccountId,
+                ["Inventory"] = parameters.InventoryAccountId
+            },
             order.OrganizationId,
             postingContext.Ledger.ChartOfAccountsId,
             ct);
@@ -1227,8 +1286,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             postingContext,
             ct);
 
-        journal.AddLine(accounts["5100"].Id, $"COGS - {order.OrderNumber}", shipmentCost, 0m);
-        journal.AddLine(accounts["1310"].Id, $"Inventory issued - {order.OrderNumber}", 0m, shipmentCost);
+        journal.AddLine(accounts["CostOfGoodsSold"].Id, $"COGS - {order.OrderNumber}", shipmentCost, 0m);
+        journal.AddLine(accounts["Inventory"].Id, $"Inventory issued - {order.OrderNumber}", 0m, shipmentCost);
         journal.Post();
     }
 
@@ -1291,29 +1350,84 @@ public class AccountsReceivableService : IAccountsReceivableService
     }
 
     private async Task<Dictionary<string, Account>> LoadPostingAccountsAsync(
-        IEnumerable<string> accountNumbers,
+        IReadOnlyDictionary<string, Guid?> postingAccounts,
         Guid organizationId,
         Guid chartOfAccountsId,
         CancellationToken ct)
     {
-        var numbers = accountNumbers.Distinct().ToList();
+        var missingConfiguration = postingAccounts
+            .Where(item => !item.Value.HasValue || item.Value == Guid.Empty)
+            .Select(item => item.Key)
+            .ToList();
+        if (missingConfiguration.Count > 0)
+            throw new InvalidOperationException(
+                $"Accounts Receivable posting account(s) are not configured: " +
+                $"{string.Join(", ", missingConfiguration)}.");
+
+        var accountIds = postingAccounts.Values
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
         var accounts = await _db.Accounts
             .Where(a =>
                 a.OrganizationId == organizationId &&
                 a.ChartOfAccountsId == chartOfAccountsId &&
-                numbers.Contains(a.AccountNumber) &&
+                accountIds.Contains(a.Id) &&
                 !a.IsHeaderAccount &&
                 a.Status == AccountStatus.Active &&
                 !a.IsDeleted)
-            .ToDictionaryAsync(a => a.AccountNumber, ct);
+            .ToDictionaryAsync(a => a.Id, ct);
 
-        var missing = numbers.Where(n => !accounts.ContainsKey(n)).ToList();
+        var missing = postingAccounts
+            .Where(item => !accounts.ContainsKey(item.Value!.Value))
+            .Select(item => item.Key)
+            .ToList();
         if (missing.Count > 0)
             throw new InvalidOperationException(
-                $"Required posting account(s) are not configured in the selected ledger's chart of accounts: " +
+                $"Configured Accounts Receivable posting account(s) are missing, inactive, header accounts, " +
+                $"or outside the selected ledger's chart of accounts: " +
                 $"{string.Join(", ", missing)}.");
 
-        return accounts;
+        return postingAccounts.ToDictionary(
+            item => item.Key,
+            item => accounts[item.Value!.Value]);
+    }
+
+    private async Task<AccountsReceivableParameters> LoadAccountsReceivableParametersAsync(
+        CancellationToken ct)
+        => await _db.AccountsReceivableParameters.FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException(
+                "Accounts Receivable posting parameters are not configured.");
+
+    private async Task ValidatePostingAccountsAsync(
+        IEnumerable<Guid> accountIds,
+        CancellationToken ct)
+    {
+        var ids = accountIds.Distinct().ToList();
+        if (ids.Any(id => id == Guid.Empty))
+            throw new InvalidOperationException(
+                "All Accounts Receivable posting accounts must be configured.");
+
+        var chartOfAccountsId = await _db.GeneralLedgerParameters
+            .Where(p => p.OrganizationId == _org.OrganizationId)
+            .Select(p => p.DefaultLedger!.ChartOfAccountsId)
+            .FirstOrDefaultAsync(ct);
+        if (chartOfAccountsId == Guid.Empty)
+            throw new InvalidOperationException(
+                "A default ledger must be configured before Accounts Receivable posting accounts.");
+
+        var validCount = await _db.Accounts.CountAsync(
+            account => ids.Contains(account.Id) &&
+                account.OrganizationId == _org.OrganizationId &&
+                account.ChartOfAccountsId == chartOfAccountsId &&
+                !account.IsHeaderAccount &&
+                account.Status == AccountStatus.Active &&
+                !account.IsDeleted,
+            ct);
+        if (validCount != ids.Count)
+            throw new InvalidOperationException(
+                "Accounts Receivable posting accounts must be active posting accounts " +
+                "in the default ledger's chart of accounts.");
     }
 
     private static CustomerDto ToCustomerDto(Customer c, decimal outstanding) =>
@@ -1869,7 +1983,14 @@ public class AccountsReceivableService : IAccountsReceivableService
             parameters.Id,
             parameters.OrganizationId,
             parameters.AllowSalesOrderInvoiceVariance,
-            parameters.MaximumInvoiceVariancePercent);
+            parameters.MaximumInvoiceVariancePercent,
+            parameters.TradeReceivableAccountId,
+            parameters.SalesRevenueAccountId,
+            parameters.SalesTaxPayableAccountId,
+            parameters.CashAccountId,
+            parameters.BankAccountId,
+            parameters.CostOfGoodsSoldAccountId,
+            parameters.InventoryAccountId);
 
     private static QuotationSummaryDto ToQuotationSummaryDto(SalesQuotation q) =>
         new(q.Id, q.QuotationNumber, q.CustomerId, q.Customer?.Name ?? string.Empty,

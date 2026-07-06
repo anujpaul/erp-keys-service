@@ -50,12 +50,11 @@ public class AuthService : IAuthService
 
         await _db.SaveChangesAsync(ct);
 
-        return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
-            new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
-                user.Username, user.Email, user.FullName,
-                user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
-                user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
-                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
+        return new LoginResponse(
+            accessToken,
+            refreshToken,
+            _jwt.AccessTokenExpiry,
+            ToUserDto(user, roles, permissions));
     }
 
     public async Task<LoginResponse> RefreshAsync(RefreshTokenRequest req, string? ipAddress, CancellationToken ct = default)
@@ -76,12 +75,11 @@ public class AuthService : IAuthService
         user.SetRefreshToken(refreshToken, _jwt.RefreshTokenExpiry);
         await _db.SaveChangesAsync(ct);
 
-        return new LoginResponse(accessToken, refreshToken, _jwt.AccessTokenExpiry,
-            new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
-                user.Username, user.Email, user.FullName,
-                user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
-                user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
-                user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt));
+        return new LoginResponse(
+            accessToken,
+            refreshToken,
+            _jwt.AccessTokenExpiry,
+            ToUserDto(user, roles, permissions));
     }
 
     public async Task LogoutAsync(Guid userId, CancellationToken ct = default)
@@ -133,11 +131,47 @@ public class AuthService : IAuthService
 
         var permissions = PermissionCatalog.ExpandForRoles(storedPermissions, roles).Order().ToList();
 
-        return new UserDto(user.Id, user.OrganizationId, user.PreferredOrganizationId,
-            user.Username, user.Email, user.FullName,
-            user.EmployeeId, user.JobTitle, user.Department, user.Phone, user.Timezone, user.Locale,
-            user.AddressLine1, user.AddressLine2, user.City, user.State, user.PostalCode, user.Country,
-            user.Status.ToString(), user.LastLoginAt, roles, permissions, user.CreatedAt, user.UpdatedAt);
+        return ToUserDto(user, roles, permissions);
+    }
+
+    public async Task<UserDto> UpdateAppearanceAsync(
+        Guid userId,
+        UpdateAppearanceRequest req,
+        CancellationToken ct = default)
+    {
+        var user = await _db.AppUsers
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(item => item.Id == userId && !item.IsDeleted, ct)
+            ?? throw new InvalidOperationException("User not found.");
+        var oldValues = new
+        {
+            user.HeaderThemeId,
+            user.SidebarThemeId
+        };
+
+        user.UpdateAppearance(req.HeaderThemeId, req.SidebarThemeId);
+        _db.AuditLogs.Add(new AuditLogEntry(
+            user.OrganizationId,
+            user.Id,
+            user.Username,
+            "Auth",
+            "UpdateAppearance",
+            user.Id.ToString(),
+            nameof(AppUser),
+            oldValues: System.Text.Json.JsonSerializer.Serialize(oldValues),
+            newValues: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                user.HeaderThemeId,
+                user.SidebarThemeId
+            })));
+        await _db.SaveChangesAsync(ct);
+
+        var (roles, storedPermissions) = await LoadAuthorizationAsync(user.Id, ct);
+        var permissions = PermissionCatalog
+            .ExpandForRoles(storedPermissions, roles)
+            .Order()
+            .ToList();
+        return ToUserDto(user, roles, permissions);
     }
 
     private async Task<(List<string> Roles, List<string> Permissions)> LoadAuthorizationAsync(
@@ -166,4 +200,36 @@ public class AuthService : IAuthService
 
         return (assignedRoles.Select(role => role.Name).Distinct().ToList(), permissions);
     }
+
+    private static UserDto ToUserDto(
+        AppUser user,
+        IReadOnlyList<string> roles,
+        IReadOnlyList<string> permissions)
+        => new(
+            user.Id,
+            user.OrganizationId,
+            user.PreferredOrganizationId,
+            user.Username,
+            user.Email,
+            user.FullName,
+            user.EmployeeId,
+            user.JobTitle,
+            user.Department,
+            user.Phone,
+            user.Timezone,
+            user.Locale,
+            user.HeaderThemeId,
+            user.SidebarThemeId,
+            user.AddressLine1,
+            user.AddressLine2,
+            user.City,
+            user.State,
+            user.PostalCode,
+            user.Country,
+            user.Status.ToString(),
+            user.LastLoginAt,
+            roles,
+            permissions,
+            user.CreatedAt,
+            user.UpdatedAt);
 }

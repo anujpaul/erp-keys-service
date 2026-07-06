@@ -21,6 +21,7 @@ public static class DatabaseSeeder
         await SeedChartOfAccountsAsync(db, logger, orgId);
         await SeedLedgerAsync(db, logger, orgId);
         await SeedGeneralLedgerParametersAsync(db, logger, orgId);
+        await SeedAccountsReceivableParametersAsync(db, logger, orgId);
         await SeedCatalogAsync(db, logger, orgId);   // Categories, Brands, Products, Variants, Inventory
         await SeedCustomersAsync(db, logger, orgId);
         await SeedVendorsAsync(db, logger, orgId);
@@ -206,6 +207,54 @@ public static class DatabaseSeeder
             maximumPennyDifference: 0.01m,
             defaultJournalType: "General");
         db.GeneralLedgerParameters.Add(parameters);
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedAccountsReceivableParametersAsync(
+        AppDbContext db, ILogger logger, Guid orgId)
+    {
+        var accounts = await db.Accounts.IgnoreQueryFilters()
+            .Where(a => a.OrganizationId == orgId)
+            .ToDictionaryAsync(a => a.AccountNumber);
+        var requiredAccountNumbers = new[]
+        {
+            "1210", "4100", "2210", "1110", "1120", "5100", "1310"
+        };
+        var missing = requiredAccountNumbers
+            .Where(number => !accounts.ContainsKey(number))
+            .ToList();
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                $"Cannot seed Accounts Receivable posting parameters. Missing default account(s): " +
+                $"{string.Join(", ", missing)}.");
+
+        var parameters = await db.AccountsReceivableParameters
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.OrganizationId == orgId);
+        if (parameters is null)
+        {
+            parameters = new ERPKeys.Domain.Modules.AccountsReceivable.AccountsReceivableParameters(orgId);
+            db.AccountsReceivableParameters.Add(parameters);
+        }
+
+        if (parameters.TradeReceivableAccountId.HasValue &&
+            parameters.SalesRevenueAccountId.HasValue &&
+            parameters.SalesTaxPayableAccountId.HasValue &&
+            parameters.CashAccountId.HasValue &&
+            parameters.BankAccountId.HasValue &&
+            parameters.CostOfGoodsSoldAccountId.HasValue &&
+            parameters.InventoryAccountId.HasValue)
+            return;
+
+        logger.LogInformation("Seeding Accounts Receivable posting parameters...");
+        parameters.UpdatePostingAccounts(
+            accounts["1210"].Id,
+            accounts["4100"].Id,
+            accounts["2210"].Id,
+            accounts["1110"].Id,
+            accounts["1120"].Id,
+            accounts["5100"].Id,
+            accounts["1310"].Id);
         await db.SaveChangesAsync();
     }
 

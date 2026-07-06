@@ -401,6 +401,7 @@ public class ProductManagementService : IProductManagementService
             default: throw new InvalidOperationException($"Unknown status '{status}'.");
         }
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync($"Product_{id}");
     }
 
     public async Task SetSalesTaxGroupAsync(
@@ -429,6 +430,7 @@ public class ProductManagementService : IProductManagementService
 
         product.SetVariantAttributeDefinition(definitionId);
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync($"Product_{id}");
     }
 
     // ── Variants ──────────────────────────────────────────────────────────────

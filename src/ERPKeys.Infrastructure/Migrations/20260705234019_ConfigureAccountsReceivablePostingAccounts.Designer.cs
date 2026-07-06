@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260705234019_ConfigureAccountsReceivablePostingAccounts")]
+    partial class ConfigureAccountsReceivablePostingAccounts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -8030,11 +8033,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("full_name");
 
-                    b.Property<string>("HeaderThemeId")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("header_theme_id");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
@@ -8089,11 +8087,6 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.Property<DateTime?>("RefreshTokenExpiry")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("refresh_token_expiry");
-
-                    b.Property<string>("SidebarThemeId")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("sidebar_theme_id");
 
                     b.Property<string>("State")
                         .HasMaxLength(150)

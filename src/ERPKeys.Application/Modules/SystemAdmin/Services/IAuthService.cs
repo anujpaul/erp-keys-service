@@ -12,4 +12,8 @@ public interface IAuthService
         Guid userId,
         SetPreferredOrganizationRequest req,
         CancellationToken ct = default);
+    Task<UserDto> UpdateAppearanceAsync(
+        Guid userId,
+        UpdateAppearanceRequest req,
+        CancellationToken ct = default);
 }

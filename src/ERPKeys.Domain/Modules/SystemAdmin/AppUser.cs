@@ -17,6 +17,8 @@ public class AppUser : BaseEntity
     public string? Phone       { get; private set; }
     public string? Timezone    { get; private set; }
     public string? Locale      { get; private set; }
+    public string? HeaderThemeId { get; private set; }
+    public string? SidebarThemeId { get; private set; }
     public string? AddressLine1 { get; private set; }
     public string? AddressLine2 { get; private set; }
     public string? City         { get; private set; }
@@ -88,6 +90,34 @@ public class AppUser : BaseEntity
         PreferredOrganizationId = organizationId;
         SetUpdated();
     }
+
+    public void UpdateAppearance(string headerThemeId, string sidebarThemeId)
+    {
+        var normalizedHeaderThemeId = headerThemeId?.Trim().ToLowerInvariant();
+        var normalizedSidebarThemeId = sidebarThemeId?.Trim().ToLowerInvariant();
+        if (normalizedHeaderThemeId is null ||
+            !SupportedHeaderThemeIds.Contains(normalizedHeaderThemeId))
+            throw new InvalidOperationException("Select a valid module header theme.");
+        if (normalizedSidebarThemeId is null ||
+            !SupportedSidebarThemeIds.Contains(normalizedSidebarThemeId))
+            throw new InvalidOperationException("Select a valid navigation sidebar theme.");
+
+        HeaderThemeId = normalizedHeaderThemeId;
+        SidebarThemeId = normalizedSidebarThemeId;
+        SetUpdated();
+    }
+
+    private static readonly HashSet<string> SupportedHeaderThemeIds =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "orchid", "ocean", "emerald", "sunset", "slate"
+        };
+
+    private static readonly HashSet<string> SupportedSidebarThemeIds =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "midnight", "navy", "graphite", "forest", "aubergine"
+        };
 
     public void RecordLogin()
     {

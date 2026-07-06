@@ -7,6 +7,13 @@ public class AccountsReceivableParameters : BaseEntity
     public Guid OrganizationId { get; private set; }
     public bool AllowSalesOrderInvoiceVariance { get; private set; }
     public decimal MaximumInvoiceVariancePercent { get; private set; }
+    public Guid? TradeReceivableAccountId { get; private set; }
+    public Guid? SalesRevenueAccountId { get; private set; }
+    public Guid? SalesTaxPayableAccountId { get; private set; }
+    public Guid? CashAccountId { get; private set; }
+    public Guid? BankAccountId { get; private set; }
+    public Guid? CostOfGoodsSoldAccountId { get; private set; }
+    public Guid? InventoryAccountId { get; private set; }
 
     private AccountsReceivableParameters() { }
 
@@ -26,6 +33,39 @@ public class AccountsReceivableParameters : BaseEntity
         AllowSalesOrderInvoiceVariance = allowVariance;
         MaximumInvoiceVariancePercent =
             allowVariance ? maximumVariancePercent : 0;
+        SetUpdated();
+    }
+
+    public void UpdatePostingAccounts(
+        Guid tradeReceivableAccountId,
+        Guid salesRevenueAccountId,
+        Guid salesTaxPayableAccountId,
+        Guid cashAccountId,
+        Guid bankAccountId,
+        Guid costOfGoodsSoldAccountId,
+        Guid inventoryAccountId)
+    {
+        var accountIds = new[]
+        {
+            tradeReceivableAccountId,
+            salesRevenueAccountId,
+            salesTaxPayableAccountId,
+            cashAccountId,
+            bankAccountId,
+            costOfGoodsSoldAccountId,
+            inventoryAccountId
+        };
+        if (accountIds.Any(id => id == Guid.Empty))
+            throw new InvalidOperationException(
+                "All Accounts Receivable posting accounts must be configured.");
+
+        TradeReceivableAccountId = tradeReceivableAccountId;
+        SalesRevenueAccountId = salesRevenueAccountId;
+        SalesTaxPayableAccountId = salesTaxPayableAccountId;
+        CashAccountId = cashAccountId;
+        BankAccountId = bankAccountId;
+        CostOfGoodsSoldAccountId = costOfGoodsSoldAccountId;
+        InventoryAccountId = inventoryAccountId;
         SetUpdated();
     }
 }

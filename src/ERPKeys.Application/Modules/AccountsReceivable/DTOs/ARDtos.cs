@@ -118,11 +118,25 @@ public record AccountsReceivableParametersDto(
     Guid Id,
     Guid OrganizationId,
     bool AllowSalesOrderInvoiceVariance,
-    decimal MaximumInvoiceVariancePercent);
+    decimal MaximumInvoiceVariancePercent,
+    Guid? TradeReceivableAccountId,
+    Guid? SalesRevenueAccountId,
+    Guid? SalesTaxPayableAccountId,
+    Guid? CashAccountId,
+    Guid? BankAccountId,
+    Guid? CostOfGoodsSoldAccountId,
+    Guid? InventoryAccountId);
 
 public record UpdateAccountsReceivableParametersRequest(
     bool AllowSalesOrderInvoiceVariance,
-    decimal MaximumInvoiceVariancePercent);
+    decimal MaximumInvoiceVariancePercent,
+    Guid TradeReceivableAccountId,
+    Guid SalesRevenueAccountId,
+    Guid SalesTaxPayableAccountId,
+    Guid CashAccountId,
+    Guid BankAccountId,
+    Guid CostOfGoodsSoldAccountId,
+    Guid InventoryAccountId);
 
 // ── AR Invoice ────────────────────────────────────────────────────────────────
 public record ARInvoiceDto(Guid Id, string InvoiceNumber, Guid CustomerId,

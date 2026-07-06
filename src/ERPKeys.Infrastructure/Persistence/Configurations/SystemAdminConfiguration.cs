@@ -25,6 +25,8 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         b.Property(e => e.Phone).HasMaxLength(50);
         b.Property(e => e.Timezone).HasMaxLength(100);
         b.Property(e => e.Locale).HasMaxLength(20);
+        b.Property(e => e.HeaderThemeId).HasMaxLength(30);
+        b.Property(e => e.SidebarThemeId).HasMaxLength(30);
         b.Property(e => e.AddressLine1).HasMaxLength(250);
         b.Property(e => e.AddressLine2).HasMaxLength(250);
         b.Property(e => e.City).HasMaxLength(150);

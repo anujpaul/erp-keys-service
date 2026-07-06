@@ -105,8 +105,11 @@ public class ARInvoice : BaseEntity
 
     public void Void()
     {
-        if (Status == ARInvoiceStatus.FullyPaid)
-            throw new InvalidOperationException("Cannot void a fully paid invoice.");
+        if (PaidAmount > 0)
+            throw new InvalidOperationException(
+                "Cannot void an invoice with applied payments or credits. Reverse the settlements first.");
+        if (Status == ARInvoiceStatus.Voided)
+            throw new InvalidOperationException("Invoice is already voided.");
         Status = ARInvoiceStatus.Voided;
         SetUpdated();
     }

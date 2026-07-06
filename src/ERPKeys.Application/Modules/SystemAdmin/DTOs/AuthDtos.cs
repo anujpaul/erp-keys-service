@@ -17,6 +17,7 @@ public record UserDto(
     string Username, string Email, string FullName,
     string? EmployeeId, string? JobTitle, string? Department,
     string? Phone, string? Timezone, string? Locale,
+    string? HeaderThemeId, string? SidebarThemeId,
     string? AddressLine1, string? AddressLine2, string? City,
     string? State, string? PostalCode, string? Country,
     string Status, DateTime? LastLoginAt,
@@ -60,6 +61,10 @@ public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record ResetPasswordRequest(Guid UserId, string NewPassword);
 
 public record SetPreferredOrganizationRequest(Guid OrganizationId);
+
+public record UpdateAppearanceRequest(
+    string HeaderThemeId,
+    string SidebarThemeId);
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
 public record RoleDto(
