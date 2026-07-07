@@ -848,6 +848,7 @@ public class AccountsReceivableService : IAccountsReceivableService
             order = await _db.SalesOrders
                 .FirstOrDefaultAsync(
                     item => item.Id == req.SalesOrderId.Value &&
+                        item.OrganizationId == _org.OrganizationId &&
                         !item.IsDeleted, ct)
                 ?? throw new InvalidOperationException("Sales order not found.");
             if (order.CustomerId != req.CustomerId)
