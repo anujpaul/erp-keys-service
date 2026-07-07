@@ -1,3 +1,4 @@
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.CashBank.DTOs;
 
 namespace ERPKeys.Application.Modules.CashBank;
@@ -13,14 +14,18 @@ public interface ICashBankService
     Task DeactivateBankAccountAsync(Guid id, CancellationToken ct = default);
 
     // ── Bank Transactions ─────────────────────────────────────────────────────
-    Task<IEnumerable<BankTransactionSummaryDto>> GetTransactionsAsync(Guid? bankAccountId = null, string? status = null, CancellationToken ct = default);
+    Task<PagedResult<BankTransactionSummaryDto>> GetTransactionsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<BankTransactionDto?> GetTransactionAsync(Guid id, CancellationToken ct = default);
     Task<BankTransactionDto> CreateTransactionAsync(CreateBankTransactionRequest req, CancellationToken ct = default);
     Task<BankTransactionDto> PostTransactionAsync(Guid id, PostTransactionRequest req, CancellationToken ct = default);
     Task VoidTransactionAsync(Guid id, CancellationToken ct = default);
 
     // ── Bank Reconciliation ───────────────────────────────────────────────────
-    Task<IEnumerable<BankReconciliationSummaryDto>> GetReconciliationsAsync(Guid? bankAccountId = null, CancellationToken ct = default);
+    Task<PagedResult<BankReconciliationSummaryDto>> GetReconciliationsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<BankReconciliationDto?> GetReconciliationAsync(Guid id, CancellationToken ct = default);
     Task<BankReconciliationDto> CreateReconciliationAsync(CreateReconciliationRequest req, CancellationToken ct = default);
     Task<BankReconciliationDto> ReconcileTransactionAsync(Guid reconciliationId, ReconcileTransactionRequest req, CancellationToken ct = default);
@@ -28,7 +33,9 @@ public interface ICashBankService
     Task CancelReconciliationAsync(Guid id, CancellationToken ct = default);
 
     // ── Cash Journals ─────────────────────────────────────────────────────────
-    Task<IEnumerable<CashJournalSummaryDto>> GetCashJournalsAsync(Guid? bankAccountId = null, string? status = null, CancellationToken ct = default);
+    Task<PagedResult<CashJournalSummaryDto>> GetCashJournalsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<CashJournalDto?> GetCashJournalAsync(Guid id, CancellationToken ct = default);
     Task<CashJournalDto> CreateCashJournalAsync(CreateCashJournalRequest req, CancellationToken ct = default);
     Task<CashJournalDto> AddJournalLineAsync(Guid journalId, CreateCashJournalLineRequest req, CancellationToken ct = default);

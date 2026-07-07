@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.ProductManagement.DTOs;
 using ERPKeys.Domain.Modules.ProductManagement;
 using Microsoft.EntityFrameworkCore;
@@ -30,9 +31,10 @@ public interface IProductManagementService
     Task DeactivateVariantAttributeDefinitionAsync(Guid id, CancellationToken ct = default);
 
     // Products
-    Task<IEnumerable<ProductSummaryDto>> GetProductsAsync(
+    Task<PagedResult<ProductSummaryDto>> GetProductsAsync(
         string? categoryId = null, string? brandId = null,
         string? status = null, string? search = null,
+        int page = 1, int pageSize = 25,
         CancellationToken ct = default);
     Task<ProductDto?> GetProductAsync(Guid id, CancellationToken ct = default);
     Task<ProductDto> CreateProductAsync(CreateProductRequest req, CancellationToken ct = default);
@@ -238,9 +240,10 @@ public class ProductManagementService : IProductManagementService
 
     // ── Products ──────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<ProductSummaryDto>> GetProductsAsync(
+    public async Task<PagedResult<ProductSummaryDto>> GetProductsAsync(
         string? categoryId = null, string? brandId = null,
         string? status = null, string? search = null,
+        int page = 1, int pageSize = 25,
         CancellationToken ct = default)
     {
         var q = _db.CatalogProducts
@@ -262,9 +265,20 @@ public class ProductManagementService : IProductManagementService
             q = q.Where(p => p.Name.Contains(search) || p.Sku.Contains(search)
                            || (p.Tags != null && p.Tags.Contains(search)));
 
-        var list = await q.OrderBy(p => p.Category!.Name).ThenBy(p => p.Name).ToListAsync(ct);
+        pageSize = Math.Clamp(pageSize, 10, 100);
+        var totalCount = await q.CountAsync(ct);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+        page = totalPages == 0 ? 1 : Math.Clamp(page, 1, totalPages);
 
-        return list.Select(p =>
+        var list = await q
+            .OrderBy(p => p.Category!.Name)
+            .ThenBy(p => p.Name)
+            .ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var items = list.Select(p =>
         {
             var activeVariants = p.Variants.Where(v => v.Status != VariantStatus.Discontinued).ToList();
             var totalStock = activeVariants.Sum(v => v.Inventory?.QuantityOnHand ?? 0);
@@ -278,7 +292,10 @@ public class ProductManagementService : IProductManagementService
                 p.Status.ToString(),
                 activeVariants.Count,
                 totalStock);
-        });
+        }).ToList();
+
+        return new PagedResult<ProductSummaryDto>(
+            items, page, pageSize, totalCount, totalPages);
     }
 
     public async Task<ProductDto?> GetProductAsync(Guid id, CancellationToken ct = default)

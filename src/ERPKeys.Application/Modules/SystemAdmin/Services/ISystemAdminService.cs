@@ -1,4 +1,5 @@
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
+using ERPKeys.Application.Common.Services;
 
 namespace ERPKeys.Application.Modules.SystemAdmin.Services;
 
@@ -29,4 +30,11 @@ public interface ISystemAdminService
     // Org Settings
     Task<OrgSettingsDto>  GetOrgSettingsAsync(CancellationToken ct = default);
     Task<OrgSettingsDto>  UpdateOrgSettingsAsync(UpdateOrgSettingsRequest req, CancellationToken ct = default);
+
+    // Number Sequences
+    Task<IReadOnlyList<NumberSequenceDto>> GetNumberSequencesAsync(CancellationToken ct = default);
+    Task<NumberSequenceDto> UpdateNumberSequenceAsync(
+        string area,
+        UpdateNumberSequenceRequest req,
+        CancellationToken ct = default);
 }

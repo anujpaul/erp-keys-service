@@ -1,3 +1,4 @@
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.FixedAssets.DTOs;
 
 namespace ERPKeys.Application.Modules.FixedAssets;
@@ -5,7 +6,9 @@ namespace ERPKeys.Application.Modules.FixedAssets;
 public interface IFixedAssetService
 {
     // ── Assets ────────────────────────────────────────────────────────────────
-    Task<List<FixedAssetSummaryDto>> GetAssetsAsync(string? category, string? status, CancellationToken ct = default);
+    Task<PagedResult<FixedAssetSummaryDto>> GetAssetsAsync(
+        string? category, string? status, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<FixedAssetDetailDto?> GetAssetAsync(Guid id, CancellationToken ct = default);
     Task<FixedAssetDetailDto> CreateAssetAsync(CreateFixedAssetRequest req, CancellationToken ct = default);
     Task<FixedAssetDetailDto> UpdateAssetAsync(Guid id, UpdateFixedAssetRequest req, CancellationToken ct = default);

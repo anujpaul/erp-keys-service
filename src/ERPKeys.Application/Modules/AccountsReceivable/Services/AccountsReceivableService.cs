@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Common.Services;
 using ERPKeys.Domain.Common;
 using ERPKeys.Application.Modules.AccountsReceivable.DTOs;
@@ -19,13 +20,21 @@ public interface IAccountsReceivableService
         CancellationToken ct = default);
 
     // Customers
-    Task<IEnumerable<CustomerDto>> GetCustomersAsync(CancellationToken ct = default);
+    Task<PagedResult<CustomerDto>> GetCustomersAsync(
+        string? search = null, int page = 1, int pageSize = 25,
+        CancellationToken ct = default);
     Task<CustomerDto> CreateCustomerAsync(CreateCustomerRequest req, CancellationToken ct = default);
     Task<CustomerDto> UpdateCustomerAsync(Guid id, UpdateCustomerRequest req, CancellationToken ct = default);
     Task<CustomerLedgerDto> GetCustomerLedgerAsync(Guid customerId, CancellationToken ct = default);
 
     // Sales Orders
-    Task<IEnumerable<SalesOrderSummaryDto>> GetSalesOrdersAsync(string? status = null, Guid? customerId = null, CancellationToken ct = default);
+    Task<PagedSalesOrdersDto> GetSalesOrdersAsync(
+        string? status = null,
+        Guid? customerId = null,
+        string? search = null,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default);
     Task<SalesOrderDto?> GetSalesOrderAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<DocumentAuditDto>> GetSalesOrderHistoryAsync(Guid id, CancellationToken ct = default);
     Task<PackingSlipDto> GetPackingSlipAsync(Guid id, CancellationToken ct = default);
@@ -41,7 +50,9 @@ public interface IAccountsReceivableService
     Task CancelSalesOrderAsync(Guid id, CancellationToken ct = default);
 
     // AR Invoices
-    Task<IEnumerable<ARInvoiceDto>> GetInvoicesAsync(Guid? customerId = null, CancellationToken ct = default);
+    Task<PagedResult<ARInvoiceDto>> GetInvoicesAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<ARInvoicePostingDto> GetInvoicePostingAsync(Guid id, CancellationToken ct = default);
     Task<ARInvoiceDto> CreateInvoiceAsync(CreateARInvoiceRequest req, CancellationToken ct = default);
     Task<ARInvoiceDto> GenerateInvoiceFromOrderAsync(Guid salesOrderId, CancellationToken ct = default);
@@ -49,7 +60,9 @@ public interface IAccountsReceivableService
     Task VoidInvoiceAsync(Guid id, CancellationToken ct = default);
 
     // AR Payments
-    Task<IEnumerable<ARPaymentDto>> GetPaymentsAsync(Guid? customerId = null, CancellationToken ct = default);
+    Task<PagedResult<ARPaymentDto>> GetPaymentsAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<ARPaymentDto> CreatePaymentAsync(CreateARPaymentRequest req, CancellationToken ct = default);
 
     // Customer Addresses
@@ -65,10 +78,14 @@ public interface IAccountsReceivableService
     Task SetPrimaryCustomerContactAsync(Guid customerId, Guid contactId, CancellationToken ct = default);
 
     // Reports
-    Task<IEnumerable<ARAgingDto>> GetAgingReportAsync(CancellationToken ct = default);
+    Task<PagedResult<ARAgingDto>> GetAgingReportAsync(
+        string? search = null, int page = 1, int pageSize = 25,
+        CancellationToken ct = default);
 
     // ── Sales Quotations ──────────────────────────────────────────────────────
-    Task<IEnumerable<QuotationSummaryDto>> GetQuotationsAsync(string? status = null, Guid? customerId = null, CancellationToken ct = default);
+    Task<PagedResult<QuotationSummaryDto>> GetQuotationsAsync(
+        string? status = null, Guid? customerId = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<QuotationDto?> GetQuotationAsync(Guid id, CancellationToken ct = default);
     Task<QuotationDto> CreateQuotationAsync(CreateQuotationRequest req, CancellationToken ct = default);
     Task<QuotationDto> AddQuotationLineAsync(Guid quotationId, AddQuotationLineRequest req, CancellationToken ct = default);
@@ -94,7 +111,9 @@ public interface IAccountsReceivableService
     Task<ARInvoiceDto> RejectARInvoiceAsync(Guid id, CancellationToken ct = default);
 
     // ── AR Credit Notes ───────────────────────────────────────────────────────
-    Task<IEnumerable<ARCreditNoteSummaryDto>> GetARCreditNotesAsync(Guid? customerId = null, CancellationToken ct = default);
+    Task<PagedResult<ARCreditNoteSummaryDto>> GetARCreditNotesAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default);
     Task<ARCreditNoteDto?> GetARCreditNoteAsync(Guid id, CancellationToken ct = default);
     Task<ARCreditNoteDto> CreateARCreditNoteAsync(CreateARCreditNoteRequest req, CancellationToken ct = default);
     Task<ARCreditNoteDto> SubmitCreditNoteForApprovalAsync(Guid id, string submittedBy, CancellationToken ct = default);
@@ -116,15 +135,18 @@ public class AccountsReceivableService : IAccountsReceivableService
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
     private readonly IDocumentAuditService _audit;
+    private readonly INumberSequenceService _numberSequences;
 
     public AccountsReceivableService(
         IAppDbContext db,
         ICurrentOrganizationService org,
-        IDocumentAuditService audit)
+        IDocumentAuditService audit,
+        INumberSequenceService numberSequences)
     {
         _db = db;
         _org = org;
         _audit = audit;
+        _numberSequences = numberSequences;
     }
 
     public async Task<AccountsReceivableParametersDto> GetParametersAsync(
@@ -210,9 +232,35 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── Customers ─────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<CustomerDto>> GetCustomersAsync(CancellationToken ct = default)
+    public async Task<PagedResult<CustomerDto>> GetCustomersAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default)
     {
-        var customers = await _db.Customers.Where(c => !c.IsDeleted).OrderBy(c => c.CustomerNumber).ToListAsync(ct);
+        var query = _db.Customers
+            .AsNoTracking()
+            .Where(c => !c.IsDeleted);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(c =>
+                c.CustomerNumber.Contains(term) ||
+                c.Name.Contains(term) ||
+                (c.Email != null && c.Email.Contains(term)) ||
+                (c.Phone != null && c.Phone.Contains(term)));
+        }
+
+        pageSize = Math.Clamp(pageSize, 10, 100);
+        var totalCount = await query.CountAsync(ct);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+        page = totalPages == 0 ? 1 : Math.Clamp(page, 1, totalPages);
+        var customers = await query
+            .OrderBy(c => c.CustomerNumber)
+            .ThenBy(c => c.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
         // load outstanding balances in one query
         var customerIds = customers.Select(c => c.Id).ToList();
         var balances = await _db.ARInvoices
@@ -221,13 +269,18 @@ public class AccountsReceivableService : IAccountsReceivableService
             .GroupBy(i => i.CustomerId)
             .Select(g => new { CustomerId = g.Key, Outstanding = g.Sum(i => i.TotalAmount - i.PaidAmount) })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Outstanding, ct);
-        return customers.Select(c => ToCustomerDto(c, balances.GetValueOrDefault(c.Id, 0)));
+        var items = customers
+            .Select(c => ToCustomerDto(c, balances.GetValueOrDefault(c.Id, 0)))
+            .ToList();
+        return new PagedResult<CustomerDto>(
+            items, page, pageSize, totalCount, totalPages);
     }
 
     public async Task<CustomerDto> CreateCustomerAsync(CreateCustomerRequest req, CancellationToken ct = default)
     {
-        var count = await _db.Customers.CountAsync(ct) + 1;
-        var customer = new Customer(_org.OrganizationId, $"CUST-{count:D5}", req.Name, req.Email, req.Phone,
+        var customerNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.Customer, DateTime.UtcNow, ct);
+        var customer = new Customer(_org.OrganizationId, customerNumber, req.Name, req.Email, req.Phone,
             req.BillingAddress, req.Currency, req.PaymentTermsDays, req.CreditLimit,
             req.BillingAddress, req.ShippingAddress, req.Website, req.Notes);
         _db.Customers.Add(customer);
@@ -304,25 +357,77 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── Sales Orders ──────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<SalesOrderSummaryDto>> GetSalesOrdersAsync(
-        string? status = null, Guid? customerId = null, CancellationToken ct = default)
+    public async Task<PagedSalesOrdersDto> GetSalesOrdersAsync(
+        string? status = null,
+        Guid? customerId = null,
+        string? search = null,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default)
     {
         var query = _db.SalesOrders
-            .Include(o => o.Customer)
-            .Include(o => o.Lines)
+            .AsNoTracking()
             .Where(o => !o.IsDeleted);
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<SalesOrderStatus>(status, out var s))
             query = query.Where(o => o.Status == s);
         if (customerId.HasValue)
             query = query.Where(o => o.CustomerId == customerId.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(o =>
+                o.OrderNumber.Contains(term) ||
+                o.Customer!.Name.Contains(term) ||
+                o.CustomerRef.Contains(term));
+        }
 
-        var orders = await query.OrderByDescending(o => o.OrderDate).ToListAsync(ct);
-        return orders.Select(o => new SalesOrderSummaryDto(
-            o.Id, o.OrderNumber, o.CustomerId, o.Customer?.Name ?? string.Empty,
-            o.OrderDate, o.RequestedShipDate, o.CustomerRef,
-            o.Status.ToString(), o.GrandTotal, o.Lines.Count, o.CreatedAt,
-            o.IsExported, o.ExportedAt, o.WorkflowInstanceId, o.RejectionReason));
+        pageSize = Math.Clamp(pageSize, 10, 100);
+        var totalCount = await query.CountAsync(ct);
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        page = Math.Clamp(page, 1, Math.Max(1, totalPages));
+
+        var items = await query
+            .OrderByDescending(o => o.OrderDate)
+            .ThenByDescending(o => o.CreatedAt)
+            .ThenByDescending(o => o.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(o => new SalesOrderSummaryDto(
+                o.Id,
+                o.OrderNumber,
+                o.CustomerId,
+                o.Customer != null ? o.Customer.Name : string.Empty,
+                o.OrderDate,
+                o.RequestedShipDate,
+                o.CustomerRef,
+                o.Status.ToString(),
+                o.GrandTotal,
+                o.Lines.Count,
+                o.CreatedAt,
+                o.IsExported,
+                o.ExportedAt,
+                o.WorkflowInstanceId,
+                o.RejectionReason))
+            .ToListAsync(ct);
+
+        var openStatuses = new[]
+        {
+            SalesOrderStatus.Draft,
+            SalesOrderStatus.Confirmed,
+            SalesOrderStatus.Picking
+        };
+        var openCount = await _db.SalesOrders
+            .AsNoTracking()
+            .CountAsync(o => !o.IsDeleted && openStatuses.Contains(o.Status), ct);
+
+        return new PagedSalesOrdersDto(
+            items,
+            page,
+            pageSize,
+            totalCount,
+            totalPages,
+            openCount);
     }
 
     public async Task<SalesOrderDto?> GetSalesOrderAsync(Guid id, CancellationToken ct = default)
@@ -340,8 +445,9 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     public async Task<SalesOrderDto> CreateSalesOrderAsync(CreateSalesOrderRequest req, CancellationToken ct = default)
     {
-        var count = await _db.SalesOrders.CountAsync(ct) + 1;
-        var order = new SalesOrder(_org.OrganizationId, $"SO-{req.OrderDate:yyyy}-{count:D5}",
+        var orderNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.SalesOrder, req.OrderDate, ct);
+        var order = new SalesOrder(_org.OrganizationId, orderNumber,
             req.CustomerId, req.OrderDate, req.Description,
             req.CustomerRef, req.Currency, req.RequestedShipDate);
         _db.SalesOrders.Add(order);
@@ -617,15 +723,39 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── AR Invoices ───────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<ARInvoiceDto>> GetInvoicesAsync(Guid? customerId = null, CancellationToken ct = default)
+    public async Task<PagedResult<ARInvoiceDto>> GetInvoicesAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.ARInvoices
             .Include(i => i.Customer)
             .Include(i => i.SalesOrder)
             .Where(i => !i.IsDeleted);
         if (customerId.HasValue) query = query.Where(i => i.CustomerId == customerId.Value);
-        var list = await query.OrderByDescending(i => i.InvoiceDate).ToListAsync(ct);
-        return list.Select(ToARInvoiceDto);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ARInvoiceStatus>(status, true, out var invoiceStatus))
+            query = query.Where(i => i.Status == invoiceStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(i =>
+                i.InvoiceNumber.ToLower().Contains(term) ||
+                (i.Description != null && i.Description.ToLower().Contains(term)) ||
+                (i.Customer != null && i.Customer.Name.ToLower().Contains(term)) ||
+                (i.SalesOrder != null && i.SalesOrder.OrderNumber.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(i => i.InvoiceDate)
+            .ThenByDescending(i => i.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<ARInvoiceDto>(
+            list.Select(ToARInvoiceDto).ToList(), page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<ARInvoicePostingDto> GetInvoicePostingAsync(
@@ -690,6 +820,26 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     public async Task<ARInvoiceDto> CreateInvoiceAsync(CreateARInvoiceRequest req, CancellationToken ct = default)
     {
+        if (req.SubTotal <= 0)
+            throw new InvalidOperationException("Invoice subtotal must be greater than zero.");
+        if (req.TaxAmount < 0 || req.DiscountAmount < 0)
+            throw new InvalidOperationException("Tax and discount amounts cannot be negative.");
+        if (req.DiscountAmount > req.SubTotal)
+            throw new InvalidOperationException("Discount amount cannot exceed the invoice subtotal.");
+        if (req.DueDate.Date < req.InvoiceDate.Date)
+            throw new InvalidOperationException("Due date cannot be before the invoice date.");
+        if (req.SubTotal - req.DiscountAmount + req.TaxAmount <= 0)
+            throw new InvalidOperationException("Invoice total must be greater than zero.");
+
+        var customer = await _db.Customers
+            .FirstOrDefaultAsync(
+                item => item.Id == req.CustomerId &&
+                    item.OrganizationId == _org.OrganizationId &&
+                    !item.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Customer not found.");
+        if (customer.Status != CustomerStatus.Active)
+            throw new InvalidOperationException("Only an active customer can be invoiced.");
+
         SalesOrder? order = null;
         decimal? variance = null;
         decimal? maximumVariancePercent = null;
@@ -722,8 +872,9 @@ public class AccountsReceivableService : IAccountsReceivableService
                 maximumVariancePercent.Value);
         }
 
-        var count = await _db.ARInvoices.CountAsync(ct) + 1;
-        var inv = new ARInvoice(_org.OrganizationId, $"INV-{count:D6}", req.CustomerId,
+        var invoiceNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.ArInvoice, req.InvoiceDate, ct);
+        var inv = new ARInvoice(_org.OrganizationId, invoiceNumber, req.CustomerId,
             req.InvoiceDate, req.DueDate, req.Description,
             req.SubTotal, req.TaxAmount, req.DiscountAmount, req.SalesOrderId);
         _db.ARInvoices.Add(inv);
@@ -758,9 +909,10 @@ public class AccountsReceivableService : IAccountsReceivableService
 
         var customer = order.Customer!;
         var dueDate = DateTime.UtcNow.Date.AddDays(customer.PaymentTermsDays);
-        var count = await _db.ARInvoices.CountAsync(ct) + 1;
+        var invoiceNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.ArInvoice, DateTime.UtcNow.Date, ct);
 
-        var inv = new ARInvoice(_org.OrganizationId, $"INV-{count:D6}", order.CustomerId,
+        var inv = new ARInvoice(_org.OrganizationId, invoiceNumber, order.CustomerId,
             DateTime.UtcNow.Date, dueDate,
             $"Invoice for {order.OrderNumber}",
             order.SubTotal, order.TaxTotal, order.DiscountTotal, order.Id);
@@ -804,19 +956,43 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── AR Payments ───────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<ARPaymentDto>> GetPaymentsAsync(Guid? customerId = null, CancellationToken ct = default)
+    public async Task<PagedResult<ARPaymentDto>> GetPaymentsAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.ARPayments
             .Include(p => p.Customer)
             .Include(p => p.ARInvoice)
             .Where(p => !p.IsDeleted);
         if (customerId.HasValue) query = query.Where(p => p.CustomerId == customerId.Value);
-        var list = await query.OrderByDescending(p => p.PaymentDate).ToListAsync(ct);
-        return list.Select(p => new ARPaymentDto(
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ARPaymentStatus>(status, true, out var paymentStatus))
+            query = query.Where(p => p.Status == paymentStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(p =>
+                p.PaymentNumber.ToLower().Contains(term) ||
+                (p.Reference != null && p.Reference.ToLower().Contains(term)) ||
+                (p.Customer != null && p.Customer.Name.ToLower().Contains(term)) ||
+                (p.ARInvoice != null && p.ARInvoice.InvoiceNumber.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(p => p.PaymentDate)
+            .ThenByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<ARPaymentDto>(list.Select(p => new ARPaymentDto(
             p.Id, p.PaymentNumber, p.CustomerId, p.Customer?.Name ?? string.Empty,
             p.ARInvoiceId, p.ARInvoice?.InvoiceNumber ?? string.Empty,
             p.PaymentDate, p.Amount, p.PaymentMethod.ToString(),
-            p.Reference, p.Status.ToString(), p.CreatedAt));
+            p.Reference, p.Status.ToString(), p.CreatedAt)).ToList(),
+            page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<ARPaymentDto> CreatePaymentAsync(CreateARPaymentRequest req, CancellationToken ct = default)
@@ -827,11 +1003,12 @@ public class AccountsReceivableService : IAccountsReceivableService
             .FirstOrDefaultAsync(i => i.Id == req.ARInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
 
-        var count = await _db.ARPayments.CountAsync(ct) + 1;
+        var paymentNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.ArPayment, req.PaymentDate, ct);
         if (!Enum.TryParse<PaymentMethod>(req.PaymentMethod, out var method))
             method = PaymentMethod.BankTransfer;
 
-        var payment = new ARPayment(_org.OrganizationId, $"RCPT-{count:D6}", req.CustomerId, req.ARInvoiceId,
+        var payment = new ARPayment(_org.OrganizationId, paymentNumber, req.CustomerId, req.ARInvoiceId,
             req.PaymentDate, req.Amount, method, req.Reference);
 
         var journal = await CreatePaymentJournalAsync(payment, invoice, ct);
@@ -968,15 +1145,19 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── Reports ───────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<ARAgingDto>> GetAgingReportAsync(CancellationToken ct = default)
+    public async Task<PagedResult<ARAgingDto>> GetAgingReportAsync(
+        string? search = null, int page = 1, int pageSize = 25,
+        CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var today = DateTime.UtcNow.Date;
         var invoices = await _db.ARInvoices
             .Include(i => i.Customer)
             .Where(i => !i.IsDeleted && i.Status != ARInvoiceStatus.FullyPaid && i.Status != ARInvoiceStatus.Voided)
             .ToListAsync(ct);
 
-        return invoices
+        var aging = invoices
             .GroupBy(i => i.CustomerId)
             .Select(g =>
             {
@@ -996,7 +1177,21 @@ public class AccountsReceivableService : IAccountsReceivableService
                     current, d1_30, d31_60, d61_90, over90,
                     current + d1_30 + d31_60 + d61_90 + over90);
             })
-            .OrderBy(a => a.CustomerName);
+            .OrderBy(a => a.CustomerName)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            aging = aging
+                .Where(a => a.CustomerNumber.ToLower().Contains(term) || a.CustomerName.ToLower().Contains(term))
+                .ToList();
+        }
+
+        var total = aging.Count;
+        return new PagedResult<ARAgingDto>(
+            aging.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+            page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1306,10 +1501,11 @@ public class AccountsReceivableService : IAccountsReceivableService
         var ledger = context.Ledger;
         var period = context.Period;
 
-        var count = await _db.JournalEntries.CountAsync(ct) + 1;
+        var journalNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.JournalEntry, entryDate.Date, ct);
         var journal = new JournalEntry(
             organizationId,
-            $"JE-{count:D6}",
+            journalNumber,
             entryDate.Date,
             period.Id,
             description,
@@ -1505,9 +1701,12 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── Sales Quotations ──────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<QuotationSummaryDto>> GetQuotationsAsync(
-        string? status = null, Guid? customerId = null, CancellationToken ct = default)
+    public async Task<PagedResult<QuotationSummaryDto>> GetQuotationsAsync(
+        string? status = null, Guid? customerId = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.SalesQuotations
             .Include(q => q.Customer)
             .Include(q => q.Lines)
@@ -1516,8 +1715,26 @@ public class AccountsReceivableService : IAccountsReceivableService
             query = query.Where(q => q.Status == s);
         if (customerId.HasValue)
             query = query.Where(q => q.CustomerId == customerId.Value);
-        var list = await query.OrderByDescending(q => q.QuotationDate).ToListAsync(ct);
-        return list.Select(ToQuotationSummaryDto);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(q =>
+                q.QuotationNumber.ToLower().Contains(term) ||
+                (q.Description != null && q.Description.ToLower().Contains(term)) ||
+                (q.CustomerRef != null && q.CustomerRef.ToLower().Contains(term)) ||
+                (q.Customer != null && q.Customer.Name.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(q => q.QuotationDate)
+            .ThenByDescending(q => q.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<QuotationSummaryDto>(
+            list.Select(ToQuotationSummaryDto).ToList(), page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<QuotationDto?> GetQuotationAsync(Guid id, CancellationToken ct = default)
@@ -1531,8 +1748,9 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     public async Task<QuotationDto> CreateQuotationAsync(CreateQuotationRequest req, CancellationToken ct = default)
     {
-        var count = await _db.SalesQuotations.CountAsync(ct) + 1;
-        var q = new SalesQuotation(_org.OrganizationId, $"QUO-{req.QuotationDate:yyyy}-{count:D5}",
+        var quotationNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.SalesQuotation, req.QuotationDate, ct);
+        var q = new SalesQuotation(_org.OrganizationId, quotationNumber,
             req.CustomerId, req.QuotationDate, req.ValidUntil, req.Description,
             req.CustomerRef, req.Currency, req.Notes);
         _db.SalesQuotations.Add(q);
@@ -1660,8 +1878,9 @@ public class AccountsReceivableService : IAccountsReceivableService
             throw new InvalidOperationException("Only Accepted quotations can be converted to a Sales Order.");
 
         var orderDate = req.OrderDate ?? DateTime.UtcNow.Date;
-        var count = await _db.SalesOrders.CountAsync(ct) + 1;
-        var so = new SalesOrder(_org.OrganizationId, $"SO-{orderDate:yyyy}-{count:D5}",
+        var orderNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.SalesOrder, orderDate, ct);
+        var so = new SalesOrder(_org.OrganizationId, orderNumber,
             q.CustomerId, orderDate,
             req.Description ?? q.Description,
             q.CustomerRef, q.Currency);
@@ -1802,19 +2021,42 @@ public class AccountsReceivableService : IAccountsReceivableService
 
     // ── AR Credit Notes ───────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<ARCreditNoteSummaryDto>> GetARCreditNotesAsync(
-        Guid? customerId = null, CancellationToken ct = default)
+    public async Task<PagedResult<ARCreditNoteSummaryDto>> GetARCreditNotesAsync(
+        Guid? customerId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.CustomerCreditNotes
             .Include(cn => cn.Customer)
             .Where(cn => !cn.IsDeleted);
         if (customerId.HasValue)
             query = query.Where(cn => cn.CustomerId == customerId.Value);
-        var list = await query.OrderByDescending(cn => cn.CreditDate).ToListAsync(ct);
-        return list.Select(cn => new ARCreditNoteSummaryDto(
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ARCreditNoteStatus>(status, true, out var noteStatus))
+            query = query.Where(cn => cn.Status == noteStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(cn =>
+                cn.CreditNoteNumber.ToLower().Contains(term) ||
+                (cn.Description != null && cn.Description.ToLower().Contains(term)) ||
+                (cn.CustomerRef != null && cn.CustomerRef.ToLower().Contains(term)) ||
+                (cn.Customer != null && cn.Customer.Name.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(cn => cn.CreditDate)
+            .ThenByDescending(cn => cn.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<ARCreditNoteSummaryDto>(list.Select(cn => new ARCreditNoteSummaryDto(
             cn.Id, cn.CreditNoteNumber, cn.CustomerId, cn.Customer?.Name ?? string.Empty,
             cn.ARInvoiceId, cn.CreditDate, cn.Reason.ToString(),
-            cn.TotalAmount, cn.AvailableCredit, cn.Status.ToString(), cn.CreatedAt));
+            cn.TotalAmount, cn.AvailableCredit, cn.Status.ToString(), cn.CreatedAt)).ToList(),
+            page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<ARCreditNoteDto?> GetARCreditNoteAsync(Guid id, CancellationToken ct = default)
@@ -1831,8 +2073,9 @@ public class AccountsReceivableService : IAccountsReceivableService
         if (!Enum.TryParse<ARCreditNoteReason>(req.Reason, out var reason))
             reason = ARCreditNoteReason.Other;
 
-        var count = await _db.CustomerCreditNotes.CountAsync(ct) + 1;
-        var cn = new CustomerCreditNote(_org.OrganizationId, $"CN-{count:D6}",
+        var creditNoteNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.CustomerCreditNote, req.CreditDate, ct);
+        var cn = new CustomerCreditNote(_org.OrganizationId, creditNoteNumber,
             req.CustomerId, req.CreditDate, req.Description,
             req.SubTotal, req.TaxAmount, reason,
             req.ARInvoiceId, req.SalesOrderId, req.CustomerRef, req.Notes);
@@ -1938,9 +2181,10 @@ public class AccountsReceivableService : IAccountsReceivableService
             .FirstOrDefaultAsync(i => i.Id == req.ARInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
 
-        var count = await _db.DunningRecords.CountAsync(ct) + 1;
         var followUpDate = req.FollowUpDate ?? DateTime.UtcNow.Date.AddDays(7);
-        var d = new DunningRecord(_org.OrganizationId, $"DUN-{count:D5}",
+        var dunningNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.Dunning, DateTime.UtcNow.Date, ct);
+        var d = new DunningRecord(_org.OrganizationId, dunningNumber,
             req.CustomerId, req.ARInvoiceId, level,
             DateTime.UtcNow.Date, followUpDate,
             inv.OutstandingAmount, req.AssignedTo, req.Notes);

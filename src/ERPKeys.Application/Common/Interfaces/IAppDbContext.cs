@@ -23,6 +23,7 @@ public interface IAppDbContext
 {
     // Organizations
     DbSet<Organization> Organizations { get; }
+    DbSet<NumberSequence> NumberSequences { get; }
 
     // Workflow Engine
     DbSet<WorkflowTemplate>     WorkflowTemplates     { get; }

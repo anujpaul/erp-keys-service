@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.Retail.DTOs;
 using ERPKeys.Domain.Modules.AccountsReceivable;
 using ERPKeys.Domain.Modules.Retail;
@@ -17,7 +18,9 @@ public interface IRetailService
     Task ToggleStoreAsync(Guid storeId, bool active, CancellationToken ct = default);
 
     // POS Transactions
-    Task<List<POSTransactionSummaryDto>> GetTransactionsAsync(Guid orgId, int page = 1, int pageSize = 50, string? status = null, CancellationToken ct = default);
+    Task<PagedResult<POSTransactionSummaryDto>> GetTransactionsAsync(
+        Guid orgId, int page = 1, int pageSize = 50, string? status = null,
+        string? channel = null, string? search = null, CancellationToken ct = default);
     Task<POSTransactionDto?> GetTransactionAsync(Guid txId, CancellationToken ct = default);
     Task<POSTransactionDto> CreateTransactionAsync(Guid orgId, CreatePOSTransactionRequest req, CancellationToken ct = default);
     Task<POSTransactionDto> CreateOnlineOrderAsync(Guid orgId, OnlineOrderRequest req, CancellationToken ct = default);
@@ -98,16 +101,31 @@ public class RetailService : IRetailService
 
     // ── POS Transactions ──────────────────────────────────────────────────────
 
-    public async Task<List<POSTransactionSummaryDto>> GetTransactionsAsync(Guid orgId,
-        int page = 1, int pageSize = 50, string? status = null, CancellationToken ct = default)
+    public async Task<PagedResult<POSTransactionSummaryDto>> GetTransactionsAsync(Guid orgId,
+        int page = 1, int pageSize = 50, string? status = null, string? channel = null, string? search = null,
+        CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var q = _db.POSTransactions
             .Include(t => t.Lines)
             .Where(t => t.OrganizationId == orgId);
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<POSTransactionStatus>(status, true, out var s))
             q = q.Where(t => t.Status == s);
+        if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<SalesChannel>(channel, true, out var c))
+            q = q.Where(t => t.Channel == c);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(t =>
+                t.TransactionNumber.ToLower().Contains(term) ||
+                (t.ExternalRef != null && t.ExternalRef.ToLower().Contains(term)) ||
+                (t.ExternalOrderRef != null && t.ExternalOrderRef.ToLower().Contains(term)) ||
+                (t.CustomerName != null && t.CustomerName.ToLower().Contains(term)));
+        }
 
+        var total = await q.CountAsync(ct);
         var txs = await q
             .OrderByDescending(t => t.TransactionDate)
             .Skip((page - 1) * pageSize).Take(pageSize)
@@ -116,7 +134,7 @@ public class RetailService : IRetailService
         var storeIds = txs.Select(t => t.StoreId).Distinct().ToList();
         var stores   = await _db.RetailStores.Where(s => storeIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
-        return txs.Select(t => new POSTransactionSummaryDto(
+        var items = txs.Select(t => new POSTransactionSummaryDto(
             t.Id, t.TransactionNumber,
             stores.GetValueOrDefault(t.StoreId, "Unknown"),
             t.ExternalRef, t.TransactionDate, t.TransactionType.ToString(),
@@ -124,6 +142,9 @@ public class RetailService : IRetailService
             t.GrandTotal, t.Lines.Count,
             t.CouponCode, t.CustomerName, t.ExternalOrderRef,
             t.ARInvoiceId, t.CreatedAt)).ToList();
+        return new PagedResult<POSTransactionSummaryDto>(
+            items, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<POSTransactionDto?> GetTransactionAsync(Guid txId, CancellationToken ct = default)

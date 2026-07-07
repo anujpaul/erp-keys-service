@@ -118,8 +118,12 @@ public class AccountsPayableController : ControllerBase
     // ── Vendors ───────────────────────────────────────────────────────────────
 
     [HttpGet("vendors")]
-    public async Task<IActionResult> GetVendors(CancellationToken ct)
-        => Ok(await _svc.GetVendorsAsync(ct));
+    public async Task<IActionResult> GetVendors(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetVendorsAsync(search, page, pageSize, ct));
 
     [HttpPost("vendors")]
     [Authorize(Policy = PermissionKeys.ApVendorManage)]
@@ -146,8 +150,14 @@ public class AccountsPayableController : ControllerBase
 
     [HttpGet("purchase-orders")]
     public async Task<IActionResult> GetPurchaseOrders(
-        [FromQuery] string? status, [FromQuery] Guid? vendorId, CancellationToken ct)
-        => Ok(await _svc.GetPurchaseOrdersAsync(status, vendorId, ct));
+        [FromQuery] string? status,
+        [FromQuery] Guid? vendorId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetPurchaseOrdersAsync(
+            status, vendorId, search, page, pageSize, ct));
 
     [HttpGet("purchase-orders/{id:guid}")]
     public async Task<IActionResult> GetPurchaseOrder(Guid id, CancellationToken ct)
@@ -251,8 +261,14 @@ public class AccountsPayableController : ControllerBase
     // ── AP Invoices ───────────────────────────────────────────────────────────
 
     [HttpGet("invoices")]
-    public async Task<IActionResult> GetInvoices([FromQuery] Guid? vendorId, CancellationToken ct)
-        => Ok(await _svc.GetInvoicesAsync(vendorId, ct));
+    public async Task<IActionResult> GetInvoices(
+        [FromQuery] Guid? vendorId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetInvoicesAsync(vendorId, status, search, page, pageSize, ct));
 
     [HttpPost("invoices")]
     [Authorize(Policy = PermissionKeys.ApInvoiceManage)]
@@ -313,8 +329,14 @@ public class AccountsPayableController : ControllerBase
     // ── AP Payments ───────────────────────────────────────────────────────────
 
     [HttpGet("payments")]
-    public async Task<IActionResult> GetPayments([FromQuery] Guid? vendorId, CancellationToken ct)
-        => Ok(await _svc.GetPaymentsAsync(vendorId, ct));
+    public async Task<IActionResult> GetPayments(
+        [FromQuery] Guid? vendorId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetPaymentsAsync(vendorId, status, search, page, pageSize, ct));
 
     [HttpPost("payments")]
     [Authorize(Policy = PermissionKeys.ApInvoiceManage)]
@@ -327,8 +349,13 @@ public class AccountsPayableController : ControllerBase
     // ── Reports ───────────────────────────────────────────────────────────────
 
     [HttpGet("aging")]
-    public async Task<IActionResult> GetAging(CancellationToken ct)
-        => Ok(await _svc.GetAgingReportAsync(ct));
+    [HttpGet("reports/aging")]
+    public async Task<IActionResult> GetAging(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetAgingReportAsync(search, page, pageSize, ct));
 
     [HttpGet("vendors/{id:guid}/ledger")]
     public async Task<IActionResult> GetVendorLedger(Guid id, CancellationToken ct)
@@ -441,8 +468,13 @@ public class AccountsPayableController : ControllerBase
     // ── Purchase Requisitions ─────────────────────────────────────────────────
 
     [HttpGet("requisitions")]
-    public async Task<IActionResult> GetRequisitions([FromQuery] string? status, CancellationToken ct)
-        => Ok(await _svc.GetRequisitionsAsync(status, ct));
+    public async Task<IActionResult> GetRequisitions(
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetRequisitionsAsync(status, search, page, pageSize, ct));
 
     [HttpGet("requisitions/{id:guid}")]
     public async Task<IActionResult> GetRequisition(Guid id, CancellationToken ct)
@@ -510,8 +542,13 @@ public class AccountsPayableController : ControllerBase
     // ── Payment Proposals ─────────────────────────────────────────────────────
 
     [HttpGet("payment-proposals")]
-    public async Task<IActionResult> GetPaymentProposals(CancellationToken ct)
-        => Ok(await _svc.GetPaymentProposalsAsync(ct));
+    public async Task<IActionResult> GetPaymentProposals(
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetPaymentProposalsAsync(status, search, page, pageSize, ct));
 
     [HttpGet("payment-proposals/{id:guid}")]
     public async Task<IActionResult> GetPaymentProposal(Guid id, CancellationToken ct)
@@ -565,8 +602,14 @@ public class AccountsPayableController : ControllerBase
     // ── Vendor Credit Notes ───────────────────────────────────────────────────
 
     [HttpGet("credit-notes")]
-    public async Task<IActionResult> GetCreditNotes([FromQuery] Guid? vendorId, CancellationToken ct)
-        => Ok(await _svc.GetCreditNotesAsync(vendorId, ct));
+    public async Task<IActionResult> GetCreditNotes(
+        [FromQuery] Guid? vendorId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetCreditNotesAsync(vendorId, status, search, page, pageSize, ct));
 
     [HttpPost("credit-notes")]
     public async Task<IActionResult> CreateCreditNote([FromBody] CreateCreditNoteRequest req, CancellationToken ct)

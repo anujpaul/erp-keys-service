@@ -19,8 +19,13 @@ public class FixedAssetsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAssets(
-        [FromQuery] string? category, [FromQuery] string? status, CancellationToken ct)
-        => Ok(await _svc.GetAssetsAsync(category, status, ct));
+        [FromQuery] string? category,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetAssetsAsync(category, status, search, page, pageSize, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetAsset(Guid id, CancellationToken ct)

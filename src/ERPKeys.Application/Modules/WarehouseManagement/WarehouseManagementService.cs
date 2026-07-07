@@ -1,6 +1,7 @@
 using ERPKeys.Application.Modules.WarehouseManagement;
 using ERPKeys.Application.Modules.WarehouseManagement.DTOs;
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Domain.Modules.WarehouseManagement;
 using ERPKeys.Domain.Modules.ProductManagement;
 using ERPKeys.Application.Modules.AccountsPayable.DTOs;
@@ -187,14 +188,39 @@ public class WarehouseManagementService : IWarehouseManagementService
 
     // ── Inbound Orders ──────────────────────────────────────────────────────
 
-    public async Task<List<InboundOrderDto>> GetInboundOrdersAsync(Guid organizationId) =>
-        await _db.InboundOrders
+    public async Task<PagedResult<InboundOrderDto>> GetInboundOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var query = _db.InboundOrders
             .Include(o => o.Warehouse)
             .Include(o => o.Lines)
-            .Where(o => o.OrganizationId == organizationId)
+            .Where(o => o.OrganizationId == organizationId);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InboundOrderStatus>(status, true, out var inboundStatus))
+            query = query.Where(o => o.Status == inboundStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(o =>
+                o.OrderNumber.ToLower().Contains(term) ||
+                (o.VendorName != null && o.VendorName.ToLower().Contains(term)) ||
+                (o.Notes != null && o.Notes.ToLower().Contains(term)) ||
+                (o.Warehouse != null && o.Warehouse.Name.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
             .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(o => ToInboundDto(o))
             .ToListAsync();
+        return new PagedResult<InboundOrderDto>(
+            items, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
+    }
 
     public async Task<InboundOrderDto?> GetInboundOrderAsync(Guid id)
     {
@@ -301,14 +327,39 @@ public class WarehouseManagementService : IWarehouseManagementService
 
     // ── Outbound Orders ─────────────────────────────────────────────────────
 
-    public async Task<List<OutboundOrderDto>> GetOutboundOrdersAsync(Guid organizationId) =>
-        await _db.OutboundOrders
+    public async Task<PagedResult<OutboundOrderDto>> GetOutboundOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var query = _db.OutboundOrders
             .Include(o => o.Warehouse)
             .Include(o => o.Lines)
-            .Where(o => o.OrganizationId == organizationId)
+            .Where(o => o.OrganizationId == organizationId);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OutboundOrderStatus>(status, true, out var outboundStatus))
+            query = query.Where(o => o.Status == outboundStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(o =>
+                o.OrderNumber.ToLower().Contains(term) ||
+                (o.CustomerName != null && o.CustomerName.ToLower().Contains(term)) ||
+                (o.Notes != null && o.Notes.ToLower().Contains(term)) ||
+                (o.Warehouse != null && o.Warehouse.Name.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
             .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(o => ToOutboundDto(o))
             .ToListAsync();
+        return new PagedResult<OutboundOrderDto>(
+            items, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
+    }
 
     public async Task<OutboundOrderDto?> GetOutboundOrderAsync(Guid id)
     {
@@ -378,15 +429,40 @@ public class WarehouseManagementService : IWarehouseManagementService
 
     // ── Transfer Orders ─────────────────────────────────────────────────────
 
-    public async Task<List<TransferOrderDto>> GetTransferOrdersAsync(Guid organizationId) =>
-        await _db.TransferOrders
+    public async Task<PagedResult<TransferOrderDto>> GetTransferOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var query = _db.TransferOrders
             .Include(o => o.FromWarehouse)
             .Include(o => o.ToWarehouse)
             .Include(o => o.Lines)
-            .Where(o => o.OrganizationId == organizationId)
+            .Where(o => o.OrganizationId == organizationId);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TransferOrderStatus>(status, true, out var transferStatus))
+            query = query.Where(o => o.Status == transferStatus);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(o =>
+                o.OrderNumber.ToLower().Contains(term) ||
+                (o.Notes != null && o.Notes.ToLower().Contains(term)) ||
+                (o.FromWarehouse != null && o.FromWarehouse.Name.ToLower().Contains(term)) ||
+                (o.ToWarehouse != null && o.ToWarehouse.Name.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
             .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(o => ToTransferDto(o))
             .ToListAsync();
+        return new PagedResult<TransferOrderDto>(
+            items, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
+    }
 
     public async Task<TransferOrderDto?> GetTransferOrderAsync(Guid id)
     {

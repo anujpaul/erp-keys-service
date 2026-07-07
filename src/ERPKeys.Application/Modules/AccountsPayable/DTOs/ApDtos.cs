@@ -73,6 +73,14 @@ public record PurchaseOrderSummaryDto(Guid Id, string PONumber, Guid VendorId,
     string Status, string InvoiceStatus, decimal GrandTotal, decimal InvoicedAmount,
     int LineCount, DateTime CreatedAt);
 
+public record PagedPurchaseOrdersDto(
+    IReadOnlyList<PurchaseOrderSummaryDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    int OpenCount);
+
 public record PurchaseOrderDto(Guid Id, string PONumber, Guid VendorId, string VendorName,
     DateTime OrderDate, DateTime? ExpectedDate, Guid? WarehouseId, string? WarehouseName,
     string Description, string Currency,

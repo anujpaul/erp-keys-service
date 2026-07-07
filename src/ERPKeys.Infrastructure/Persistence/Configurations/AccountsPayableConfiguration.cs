@@ -56,6 +56,32 @@ public class PurchaseOrderConfiguration : IEntityTypeConfiguration<PurchaseOrder
         b.HasMany(e => e.Receipts).WithOne(r => r.PurchaseOrder)
             .HasForeignKey(r => r.PurchaseOrderId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.PONumber }).IsUnique();
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, true, true, true);
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.Status,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, false, true, true, true);
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.VendorId,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, false, true, true, true);
         // Query filter applied in AppDbContext.OnModelCreating
     }
 }

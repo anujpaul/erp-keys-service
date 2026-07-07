@@ -1,5 +1,6 @@
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Common.Security;
+using ERPKeys.Application.Common.Services;
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
 using ERPKeys.Domain.Common;
 using ERPKeys.Domain.Modules.SystemAdmin;
@@ -14,17 +15,20 @@ public class SystemAdminService : ISystemAdminService
     private readonly ICurrentOrganizationService _org;
     private readonly ICurrentUserService _currentUser;
     private readonly IPasswordHasher _hasher;
+    private readonly INumberSequenceService _numberSequences;
 
     public SystemAdminService(
         IAppDbContext db,
         ICurrentOrganizationService org,
         ICurrentUserService currentUser,
-        IPasswordHasher hasher)
+        IPasswordHasher hasher,
+        INumberSequenceService numberSequences)
     {
         _db     = db;
         _org    = org;
         _currentUser = currentUser;
         _hasher = hasher;
+        _numberSequences = numberSequences;
     }
 
     private Guid OrgId => _org.OrganizationId;
@@ -273,6 +277,15 @@ public class SystemAdminService : ISystemAdminService
         await _db.SaveChangesAsync(ct);
         return ToOrgSettingsDto(org);
     }
+
+    public Task<IReadOnlyList<NumberSequenceDto>> GetNumberSequencesAsync(CancellationToken ct = default) =>
+        _numberSequences.GetSequencesAsync(ct);
+
+    public Task<NumberSequenceDto> UpdateNumberSequenceAsync(
+        string area,
+        UpdateNumberSequenceRequest req,
+        CancellationToken ct = default) =>
+        _numberSequences.UpdateSequenceAsync(area, req, ct);
 
     private static OrgSettingsDto ToOrgSettingsDto(Domain.Modules.Organization.Organization org) =>
         new(org.Id, org.Code, org.Name, org.LogoUrl,

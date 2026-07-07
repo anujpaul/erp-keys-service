@@ -36,3 +36,24 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
         builder.HasIndex(o => o.Code).IsUnique();
     }
 }
+
+public class NumberSequenceConfiguration : IEntityTypeConfiguration<NumberSequence>
+{
+    public void Configure(EntityTypeBuilder<NumberSequence> b)
+    {
+        b.ToTable("number_sequences");
+        b.HasKey(e => e.Id);
+        b.Property(e => e.OrganizationId).IsRequired();
+        b.Property(e => e.Area).HasMaxLength(80).IsRequired();
+        b.Property(e => e.DisplayName).HasMaxLength(150).IsRequired();
+        b.Property(e => e.Prefix).HasMaxLength(20).IsRequired();
+        b.Property(e => e.Separator).HasMaxLength(3).IsRequired();
+        b.Property(e => e.Padding).IsRequired();
+        b.Property(e => e.NextNumber).IsRequired();
+        b.Property(e => e.IncludeYear).IsRequired();
+        b.Property(e => e.AllowManualOverride).IsRequired();
+        b.Property(e => e.IsActive).IsRequired();
+        b.HasIndex(e => new { e.OrganizationId, e.Area }).IsUnique();
+        b.HasIndex(e => new { e.OrganizationId, e.DisplayName });
+    }
+}

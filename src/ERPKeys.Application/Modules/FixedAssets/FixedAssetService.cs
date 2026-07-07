@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.FixedAssets;
 using ERPKeys.Application.Modules.FixedAssets.DTOs;
 using ERPKeys.Domain.Modules.FixedAssets;
@@ -19,9 +20,12 @@ public class FixedAssetService : IFixedAssetService
 
     // ── Assets ────────────────────────────────────────────────────────────────
 
-    public async Task<List<FixedAssetSummaryDto>> GetAssetsAsync(
-        string? category, string? status, CancellationToken ct = default)
+    public async Task<PagedResult<FixedAssetSummaryDto>> GetAssetsAsync(
+        string? category, string? status, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var q = _db.FixedAssets.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(category) &&
@@ -31,11 +35,29 @@ public class FixedAssetService : IFixedAssetService
         if (!string.IsNullOrWhiteSpace(status) &&
             Enum.TryParse<AssetStatus>(status, true, out var st))
             q = q.Where(a => a.Status == st);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(a =>
+                a.AssetCode.ToLower().Contains(term) ||
+                a.AssetName.ToLower().Contains(term) ||
+                (a.Description != null && a.Description.ToLower().Contains(term)) ||
+                (a.PurchaseOrderRef != null && a.PurchaseOrderRef.ToLower().Contains(term)) ||
+                (a.Supplier != null && a.Supplier.ToLower().Contains(term)) ||
+                (a.SerialNumber != null && a.SerialNumber.ToLower().Contains(term)) ||
+                (a.Location != null && a.Location.ToLower().Contains(term)));
+        }
 
-        return await q
+        var total = await q.CountAsync(ct);
+        var items = await q
             .OrderBy(a => a.AssetCode)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(a => ToSummary(a))
             .ToListAsync(ct);
+        return new PagedResult<FixedAssetSummaryDto>(
+            items, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<FixedAssetDetailDto?> GetAssetAsync(Guid id, CancellationToken ct = default)

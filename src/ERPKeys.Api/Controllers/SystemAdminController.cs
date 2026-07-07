@@ -1,6 +1,7 @@
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
 using ERPKeys.Application.Modules.SystemAdmin.Services;
 using ERPKeys.Application.Common.Security;
+using ERPKeys.Application.Common.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -141,6 +142,22 @@ public class SystemAdminController : ControllerBase
     public async Task<IActionResult> UpdateOrgSettings([FromBody] UpdateOrgSettingsRequest req, CancellationToken ct)
     {
         try   { return Ok(await _svc.UpdateOrgSettingsAsync(req, ct)); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("number-sequences")]
+    [Authorize(Policy = PermissionKeys.SystemSettingsManage)]
+    public async Task<IActionResult> GetNumberSequences(CancellationToken ct)
+        => Ok(await _svc.GetNumberSequencesAsync(ct));
+
+    [HttpPut("number-sequences/{area}")]
+    [Authorize(Policy = PermissionKeys.SystemSettingsManage)]
+    public async Task<IActionResult> UpdateNumberSequence(
+        string area,
+        [FromBody] UpdateNumberSequenceRequest req,
+        CancellationToken ct)
+    {
+        try   { return Ok(await _svc.UpdateNumberSequenceAsync(area, req, ct)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 }

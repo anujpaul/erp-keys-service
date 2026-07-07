@@ -1,3 +1,4 @@
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.WarehouseManagement.DTOs;
 
 namespace ERPKeys.Application.Modules.WarehouseManagement;
@@ -23,7 +24,9 @@ public interface IWarehouseManagementService
     Task<bool>                       DeactivateLocationAsync(Guid id);
 
     // ── Inbound Orders ───────────────────────────────────────────
-    Task<List<InboundOrderDto>>     GetInboundOrdersAsync(Guid organizationId);
+    Task<PagedResult<InboundOrderDto>> GetInboundOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25);
     Task<InboundOrderDto?>          GetInboundOrderAsync(Guid id);
     Task<InboundOrderDto>           CreateInboundOrderAsync(CreateInboundOrderDto dto);
     Task<bool>                      ConfirmInboundOrderAsync(Guid id);
@@ -34,7 +37,9 @@ public interface IWarehouseManagementService
     Task<bool>                      CancelInboundOrderAsync(Guid id);
 
     // ── Outbound Orders ──────────────────────────────────────────
-    Task<List<OutboundOrderDto>>    GetOutboundOrdersAsync(Guid organizationId);
+    Task<PagedResult<OutboundOrderDto>> GetOutboundOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25);
     Task<OutboundOrderDto?>         GetOutboundOrderAsync(Guid id);
     Task<OutboundOrderDto>          CreateOutboundOrderAsync(CreateOutboundOrderDto dto);
     Task<bool>                      ConfirmOutboundOrderAsync(Guid id);
@@ -45,7 +50,9 @@ public interface IWarehouseManagementService
     Task<bool>                      CancelOutboundOrderAsync(Guid id);
 
     // ── Transfer Orders ──────────────────────────────────────────
-    Task<List<TransferOrderDto>>    GetTransferOrdersAsync(Guid organizationId);
+    Task<PagedResult<TransferOrderDto>> GetTransferOrdersAsync(
+        Guid organizationId, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25);
     Task<TransferOrderDto?>         GetTransferOrderAsync(Guid id);
     Task<TransferOrderDto>          CreateTransferOrderAsync(CreateTransferOrderDto dto);
     Task<bool>                      ConfirmTransferOrderAsync(Guid id);

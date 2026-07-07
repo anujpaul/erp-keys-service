@@ -279,8 +279,14 @@ public class GeneralLedgerController : ControllerBase
     }
 
     [HttpGet("journal-entries")]
-    public async Task<IActionResult> GetJournalEntries([FromQuery] Guid? fiscalPeriodId, CancellationToken ct)
-        => Ok(await _svc.GetJournalEntriesAsync(fiscalPeriodId, ct));
+    public async Task<IActionResult> GetJournalEntries(
+        [FromQuery] Guid? fiscalPeriodId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetJournalEntriesAsync(
+            fiscalPeriodId, search, page, pageSize, ct));
 
     [HttpGet("journal-entries/{id:guid}")]
     public async Task<IActionResult> GetJournalEntry(Guid id, CancellationToken ct)

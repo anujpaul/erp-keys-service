@@ -35,6 +35,7 @@ public class AppDbContext : DbContext, IAppDbContext
 
     // Organizations
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<NumberSequence> NumberSequences => Set<NumberSequence>();
 
     // Workflow Engine
     public DbSet<WorkflowTemplate>     WorkflowTemplates     => Set<WorkflowTemplate>();
@@ -210,6 +211,8 @@ public class AppDbContext : DbContext, IAppDbContext
         // Organizations — soft delete only (no org scope — cross-org list is needed)
         modelBuilder.Entity<Organization>()
             .HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<NumberSequence>()
+            .HasQueryFilter(e => !e.IsDeleted && (_orgService == null || _orgService.OrganizationId == Guid.Empty || e.OrganizationId == _orgService.OrganizationId));
 
         // Product Management
         modelBuilder.Entity<Category>()

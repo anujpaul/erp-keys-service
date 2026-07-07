@@ -63,8 +63,9 @@ public class OmniChannelController : ControllerBase
     public async Task<IActionResult> GetTransactions(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
         [FromQuery] string? status = null, [FromQuery] string? channel = null,
+        [FromQuery] string? search = null,
         CancellationToken ct = default)
-        => Ok(await _svc.GetTransactionsAsync(_org.OrganizationId, page, pageSize, status, ct));
+        => Ok(await _svc.GetTransactionsAsync(_org.OrganizationId, page, pageSize, status, channel, search, ct));
 
     [HttpGet("transactions/{id:guid}")]
     public async Task<IActionResult> GetTransaction(Guid id, CancellationToken ct)

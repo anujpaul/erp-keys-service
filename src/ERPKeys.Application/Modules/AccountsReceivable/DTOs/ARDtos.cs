@@ -71,6 +71,14 @@ public record SalesOrderSummaryDto(Guid Id, string OrderNumber, Guid CustomerId,
     string CustomerRef, string Status, decimal GrandTotal, int LineCount, DateTime CreatedAt,
     bool IsExported, DateTime? ExportedAt, Guid? WorkflowInstanceId, string? RejectionReason);
 
+public record PagedSalesOrdersDto(
+    IReadOnlyList<SalesOrderSummaryDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    int OpenCount);
+
 public record SalesOrderDto(Guid Id, string OrderNumber, Guid CustomerId, string CustomerName,
     DateTime OrderDate, DateTime? RequestedShipDate, DateTime? ActualShipDate,
     string Description, string CustomerRef, string Currency, string Status,

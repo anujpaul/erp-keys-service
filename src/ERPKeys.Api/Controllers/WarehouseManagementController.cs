@@ -98,8 +98,13 @@ public class WarehouseManagementController : ControllerBase
     // ── Inbound Orders ───────────────────────────────────────────────────────
 
     [HttpGet("inbound")]
-    public async Task<IActionResult> GetInboundOrders([FromQuery] Guid organizationId) =>
-        Ok(await _svc.GetInboundOrdersAsync(organizationId));
+    public async Task<IActionResult> GetInboundOrders(
+        [FromQuery] Guid organizationId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25) =>
+        Ok(await _svc.GetInboundOrdersAsync(organizationId, status, search, page, pageSize));
 
     [HttpGet("inbound/{id:guid}")]
     public async Task<IActionResult> GetInboundOrder(Guid id)
@@ -143,8 +148,13 @@ public class WarehouseManagementController : ControllerBase
     // ── Outbound Orders ──────────────────────────────────────────────────────
 
     [HttpGet("outbound")]
-    public async Task<IActionResult> GetOutboundOrders([FromQuery] Guid organizationId) =>
-        Ok(await _svc.GetOutboundOrdersAsync(organizationId));
+    public async Task<IActionResult> GetOutboundOrders(
+        [FromQuery] Guid organizationId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25) =>
+        Ok(await _svc.GetOutboundOrdersAsync(organizationId, status, search, page, pageSize));
 
     [HttpGet("outbound/{id:guid}")]
     public async Task<IActionResult> GetOutboundOrder(Guid id)
@@ -188,8 +198,13 @@ public class WarehouseManagementController : ControllerBase
     // ── Transfer Orders ──────────────────────────────────────────────────────
 
     [HttpGet("transfer")]
-    public async Task<IActionResult> GetTransferOrders([FromQuery] Guid organizationId) =>
-        Ok(await _svc.GetTransferOrdersAsync(organizationId));
+    public async Task<IActionResult> GetTransferOrders(
+        [FromQuery] Guid organizationId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25) =>
+        Ok(await _svc.GetTransferOrdersAsync(organizationId, status, search, page, pageSize));
 
     [HttpGet("transfer/{id:guid}")]
     public async Task<IActionResult> GetTransferOrder(Guid id)

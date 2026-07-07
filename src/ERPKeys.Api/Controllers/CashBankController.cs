@@ -63,8 +63,13 @@ public class CashBankController : ControllerBase
 
     [HttpGet("transactions")]
     public async Task<IActionResult> GetTransactions(
-        [FromQuery] Guid? bankAccountId, [FromQuery] string? status, CancellationToken ct)
-        => Ok(await _svc.GetTransactionsAsync(bankAccountId, status, ct));
+        [FromQuery] Guid? bankAccountId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetTransactionsAsync(bankAccountId, status, search, page, pageSize, ct));
 
     [HttpGet("transactions/{id:guid}")]
     public async Task<IActionResult> GetTransaction(Guid id, CancellationToken ct)
@@ -100,8 +105,13 @@ public class CashBankController : ControllerBase
 
     [HttpGet("reconciliations")]
     public async Task<IActionResult> GetReconciliations(
-        [FromQuery] Guid? bankAccountId, CancellationToken ct)
-        => Ok(await _svc.GetReconciliationsAsync(bankAccountId, ct));
+        [FromQuery] Guid? bankAccountId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetReconciliationsAsync(bankAccountId, status, search, page, pageSize, ct));
 
     [HttpGet("reconciliations/{id:guid}")]
     public async Task<IActionResult> GetReconciliation(Guid id, CancellationToken ct)
@@ -145,8 +155,13 @@ public class CashBankController : ControllerBase
 
     [HttpGet("journals")]
     public async Task<IActionResult> GetJournals(
-        [FromQuery] Guid? bankAccountId, [FromQuery] string? status, CancellationToken ct)
-        => Ok(await _svc.GetCashJournalsAsync(bankAccountId, status, ct));
+        [FromQuery] Guid? bankAccountId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetCashJournalsAsync(bankAccountId, status, search, page, pageSize, ct));
 
     [HttpGet("journals/{id:guid}")]
     public async Task<IActionResult> GetJournal(Guid id, CancellationToken ct)

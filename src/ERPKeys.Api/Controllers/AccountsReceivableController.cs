@@ -121,8 +121,12 @@ public class AccountsReceivableController : ControllerBase
     // ── Customers ─────────────────────────────────────────────────────────────
 
     [HttpGet("customers")]
-    public async Task<IActionResult> GetCustomers(CancellationToken ct)
-        => Ok(await _svc.GetCustomersAsync(ct));
+    public async Task<IActionResult> GetCustomers(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetCustomersAsync(search, page, pageSize, ct));
 
     [HttpPost("customers")]
     [Authorize(Policy = PermissionKeys.ArCustomerManage)]
@@ -148,8 +152,14 @@ public class AccountsReceivableController : ControllerBase
 
     [HttpGet("sales-orders")]
     public async Task<IActionResult> GetSalesOrders(
-        [FromQuery] string? status, [FromQuery] Guid? customerId, CancellationToken ct)
-        => Ok(await _svc.GetSalesOrdersAsync(status, customerId, ct));
+        [FromQuery] string? status,
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetSalesOrdersAsync(
+            status, customerId, search, page, pageSize, ct));
 
     [HttpGet("sales-orders/{id:guid}")]
     public async Task<IActionResult> GetSalesOrder(Guid id, CancellationToken ct)
@@ -256,8 +266,14 @@ public class AccountsReceivableController : ControllerBase
     // ── AR Invoices ───────────────────────────────────────────────────────────
 
     [HttpGet("invoices")]
-    public async Task<IActionResult> GetInvoices([FromQuery] Guid? customerId, CancellationToken ct)
-        => Ok(await _svc.GetInvoicesAsync(customerId, ct));
+    public async Task<IActionResult> GetInvoices(
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetInvoicesAsync(customerId, status, search, page, pageSize, ct));
 
     [HttpGet("invoices/{id:guid}/posting")]
     [Authorize(Policy = PermissionKeys.ArInvoiceView)]
@@ -302,8 +318,14 @@ public class AccountsReceivableController : ControllerBase
     // ── AR Payments ───────────────────────────────────────────────────────────
 
     [HttpGet("payments")]
-    public async Task<IActionResult> GetPayments([FromQuery] Guid? customerId, CancellationToken ct)
-        => Ok(await _svc.GetPaymentsAsync(customerId, ct));
+    public async Task<IActionResult> GetPayments(
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetPaymentsAsync(customerId, status, search, page, pageSize, ct));
 
     [HttpPost("payments")]
     [Authorize(Policy = PermissionKeys.ArInvoiceManage)]
@@ -316,8 +338,13 @@ public class AccountsReceivableController : ControllerBase
     // ── Reports ───────────────────────────────────────────────────────────────
 
     [HttpGet("aging")]
-    public async Task<IActionResult> GetAging(CancellationToken ct)
-        => Ok(await _svc.GetAgingReportAsync(ct));
+    [HttpGet("reports/aging")]
+    public async Task<IActionResult> GetAging(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetAgingReportAsync(search, page, pageSize, ct));
 
     [HttpGet("customers/{id:guid}/ledger")]
     public async Task<IActionResult> GetCustomerLedger(Guid id, CancellationToken ct)
@@ -451,8 +478,13 @@ public class AccountsReceivableController : ControllerBase
 
     [HttpGet("quotations")]
     public async Task<IActionResult> GetQuotations(
-        [FromQuery] string? status, [FromQuery] Guid? customerId, CancellationToken ct)
-        => Ok(await _svc.GetQuotationsAsync(status, customerId, ct));
+        [FromQuery] string? status,
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetQuotationsAsync(status, customerId, search, page, pageSize, ct));
 
     [HttpGet("quotations/{id:guid}")]
     public async Task<IActionResult> GetQuotation(Guid id, CancellationToken ct)
@@ -541,8 +573,14 @@ public class AccountsReceivableController : ControllerBase
     // ── AR Credit Notes ───────────────────────────────────────────────────────
 
     [HttpGet("credit-notes")]
-    public async Task<IActionResult> GetCreditNotes([FromQuery] Guid? customerId, CancellationToken ct)
-        => Ok(await _svc.GetARCreditNotesAsync(customerId, ct));
+    public async Task<IActionResult> GetCreditNotes(
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetARCreditNotesAsync(customerId, status, search, page, pageSize, ct));
 
     [HttpGet("credit-notes/{id:guid}")]
     public async Task<IActionResult> GetCreditNote(Guid id, CancellationToken ct)

@@ -53,6 +53,32 @@ public class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrder>
         b.HasMany(e => e.Lines).WithOne(l => l.SalesOrder)
             .HasForeignKey(l => l.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.OrderNumber }).IsUnique();
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, true, true, true);
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.Status,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, false, true, true, true);
+        b.HasIndex(e => new
+            {
+                e.OrganizationId,
+                e.CustomerId,
+                e.OrderDate,
+                e.CreatedAt,
+                e.Id
+            })
+            .IsDescending(false, false, true, true, true);
         // Query filter applied in AppDbContext.OnModelCreating
     }
 }

@@ -1,4 +1,6 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
+using ERPKeys.Application.Common.Services;
 using ERPKeys.Application.Modules.GeneralLedger.DTOs;
 using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +55,10 @@ public interface IGeneralLedgerService
     Task DeactivateFinancialDimensionSetAsync(Guid id, CancellationToken ct = default);
 
     // Journal Entries
-    Task<IEnumerable<JournalEntryDto>> GetJournalEntriesAsync(Guid? fiscalPeriodId = null, CancellationToken ct = default);
+    Task<PagedResult<JournalEntryDto>> GetJournalEntriesAsync(
+        Guid? fiscalPeriodId = null, string? search = null,
+        int page = 1, int pageSize = 25,
+        CancellationToken ct = default);
     Task<JournalEntryDto?> GetJournalEntryAsync(Guid id, CancellationToken ct = default);
     Task<JournalEntryDto> CreateJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
     Task<JournalEntryDto> CreateAndPostJournalEntryAsync(CreateJournalEntryRequest req, CancellationToken ct = default);
@@ -93,18 +98,21 @@ public class GeneralLedgerService : IGeneralLedgerService
     private readonly ICurrentOrganizationService _org;
     private readonly ICurrentUserService _user;
     private readonly ILogger<GeneralLedgerService> _logger;
+    private readonly INumberSequenceService _numberSequences;
 
     public GeneralLedgerService(
         IAppDbContext db,
         ICurrentOrganizationService org,
         ICurrentUserService user,
-        ILogger<GeneralLedgerService> logger
+        ILogger<GeneralLedgerService> logger,
+        INumberSequenceService numberSequences
         )
     {
         _db = db;
         _org = org;
         _user = user;
         _logger = logger;
+        _numberSequences = numberSequences;
     }
 
     // ── Fiscal Calendar ───────────────────────────────────────────────────────
@@ -767,7 +775,12 @@ public class GeneralLedgerService : IGeneralLedgerService
 
     // ── Journal Entries ───────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<JournalEntryDto>> GetJournalEntriesAsync(Guid? fiscalPeriodId = null, CancellationToken ct = default)
+    public async Task<PagedResult<JournalEntryDto>> GetJournalEntriesAsync(
+        Guid? fiscalPeriodId = null,
+        string? search = null,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default)
     {
         var query = _db.JournalEntries
             .Include(e => e.Ledger)
@@ -781,9 +794,29 @@ public class GeneralLedgerService : IGeneralLedgerService
 
         if (fiscalPeriodId.HasValue)
             query = query.Where(e => e.FiscalPeriodId == fiscalPeriodId.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(e =>
+                e.EntryNumber.Contains(term) ||
+                e.Description.Contains(term) ||
+                e.Reference.Contains(term));
+        }
 
-        var entries = await query.OrderByDescending(e => e.EntryDate).ToListAsync(ct);
-        return entries.Select(ToJournalEntryDto);
+        pageSize = Math.Clamp(pageSize, 10, 100);
+        var totalCount = await query.CountAsync(ct);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+        page = totalPages == 0 ? 1 : Math.Clamp(page, 1, totalPages);
+        var entries = await query
+            .OrderByDescending(e => e.EntryDate)
+            .ThenByDescending(e => e.CreatedAt)
+            .ThenByDescending(e => e.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<JournalEntryDto>(
+            entries.Select(ToJournalEntryDto).ToList(),
+            page, pageSize, totalCount, totalPages);
     }
 
     public async Task<JournalEntryDto?> GetJournalEntryAsync(Guid id, CancellationToken ct = default)
@@ -839,8 +872,9 @@ public class GeneralLedgerService : IGeneralLedgerService
             throw new InvalidOperationException(
                 "All journal accounts must be active and belong to the ledger's chart of accounts.");
 
-        var count = await _db.JournalEntries.CountAsync(ct) + 1;
-        var entry = new JournalEntry(_org.OrganizationId, $"JE-{count:D6}", req.EntryDate, req.FiscalPeriodId,
+        var entryNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.JournalEntry, req.EntryDate, ct);
+        var entry = new JournalEntry(_org.OrganizationId, entryNumber, req.EntryDate, req.FiscalPeriodId,
             req.Description, req.Reference,
             string.IsNullOrWhiteSpace(req.JournalType)
                 ? parameters?.DefaultJournalType ?? "General"
@@ -1459,14 +1493,15 @@ public class GeneralLedgerService : IGeneralLedgerService
             req.StartFiscalPeriodId,
             req.TotalAmount);
 
-        var entryNumber = await _db.JournalEntries.CountAsync(ct) + 1;
         for (var index = 0; index < targetPeriods.Count; index++)
         {
             var period = targetPeriods[index];
             var amount = amounts[index];
+            var entryNumber = await _numberSequences.ReserveNextAsync(
+                NumberSequenceAreas.JournalEntry, period.EndDate, ct);
             var entry = new JournalEntry(
                 _org.OrganizationId,
-                $"JE-{entryNumber + index:D6}",
+                entryNumber,
                 period.EndDate,
                 period.Id,
                 string.IsNullOrWhiteSpace(req.Description) ? scheme.Name : req.Description!,

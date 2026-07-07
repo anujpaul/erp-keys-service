@@ -2,6 +2,7 @@ using ERPKeys.Domain.Modules.GeneralLedger;
 using ERPKeys.Domain.Modules.Organization;
 using ERPKeys.Domain.Modules.ProductManagement;
 using ERPKeys.Domain.Modules.SystemAdmin;
+using ERPKeys.Application.Common.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 // AR namespace excluded — seeder only uses PM.Product; AR.Product is an obsolete tombstone
@@ -25,6 +26,7 @@ public static class DatabaseSeeder
         await SeedCatalogAsync(db, logger, orgId);   // Categories, Brands, Products, Variants, Inventory
         await SeedCustomersAsync(db, logger, orgId);
         await SeedVendorsAsync(db, logger, orgId);
+        await SeedNumberSequencesAsync(db, logger, orgId);
         await SeedSystemAdminAsync(db, logger, orgId);
         await RemoveLegacySystemAdminRoleAsync(db, logger);
         await SeedFinancialDimension(db, logger, orgId);
@@ -59,6 +61,60 @@ public static class DatabaseSeeder
     }
 
     // ── Account Types ─────────────────────────────────────────────────────────
+
+    private static async Task SeedNumberSequencesAsync(AppDbContext db, ILogger logger, Guid orgId)
+    {
+        var existingAreas = await db.NumberSequences.IgnoreQueryFilters()
+            .Where(sequence => sequence.OrganizationId == orgId)
+            .Select(sequence => sequence.Area)
+            .ToListAsync();
+        var existing = existingAreas.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = 0;
+        foreach (var def in NumberSequenceAreas.Defaults)
+        {
+            if (existing.Contains(def.Area)) continue;
+            db.NumberSequences.Add(new NumberSequence(
+                orgId,
+                def.Area,
+                def.DisplayName,
+                def.Prefix,
+                def.Padding,
+                await GetSeedNextNumberAsync(db, orgId, def.Area),
+                includeYear: def.IncludeYear));
+            added++;
+        }
+
+        if (added == 0) return;
+        await db.SaveChangesAsync();
+        logger.LogInformation("Seeded {Count} default number sequences.", added);
+    }
+
+    private static async Task<long> GetSeedNextNumberAsync(AppDbContext db, Guid orgId, string area) =>
+        area switch
+        {
+            NumberSequenceAreas.Customer => await db.Customers.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.Vendor => await db.Vendors.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.SalesOrder => await db.SalesOrders.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.SalesQuotation => await db.SalesQuotations.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.ArInvoice => await db.ARInvoices.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.ArPayment => await db.ARPayments.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.CustomerCreditNote => await db.CustomerCreditNotes.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.Dunning => await db.DunningRecords.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.PurchaseOrder => await db.PurchaseOrders.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.PurchaseRequisition => await db.PurchaseRequisitions.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.GoodsReceipt => await db.PurchaseOrderReceipts.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.ApInvoice => await db.APInvoices.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.ApPayment => await db.APPayments.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.PaymentProposal => await db.PaymentProposals.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.VendorCreditNote => await db.VendorCreditNotes.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.JournalEntry => await db.JournalEntries.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.CashJournal => await db.CashJournals.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.BankTransaction => await db.BankTransactions.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.BankReconciliation => await db.BankReconciliations.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            NumberSequenceAreas.ExpenseReport => await db.ExpenseReports.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == orgId) + 1,
+            _ => 1
+        };
 
     private static async Task SeedAccountTypesAsync(AppDbContext db, ILogger logger)
     {

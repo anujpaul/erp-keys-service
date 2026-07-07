@@ -69,6 +69,7 @@ builder.Services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbConte
 builder.Services.AddScoped<ICurrentOrganizationService, CurrentOrganizationService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IDocumentAuditService, DocumentAuditService>();
+builder.Services.AddScoped<INumberSequenceService, NumberSequenceService>();
 
 // ── Application Services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();

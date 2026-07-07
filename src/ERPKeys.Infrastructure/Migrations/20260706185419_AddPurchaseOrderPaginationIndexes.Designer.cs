@@ -3,6 +3,7 @@ using System;
 using ERPKeys.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace ERPKeys.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260706185419_AddPurchaseOrderPaginationIndexes")]
+    partial class AddPurchaseOrderPaginationIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5742,86 +5745,6 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasDatabaseName("ix_loyalty_programs_organization_id");
 
                     b.ToTable("loyalty_programs", (string)null);
-                });
-
-            modelBuilder.Entity("ERPKeys.Domain.Modules.Organization.NumberSequence", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("AllowManualOverride")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_manual_override");
-
-                    b.Property<string>("Area")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("area");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("display_name");
-
-                    b.Property<bool>("IncludeYear")
-                        .HasColumnType("boolean")
-                        .HasColumnName("include_year");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<long>("NextNumber")
-                        .HasColumnType("bigint")
-                        .HasColumnName("next_number");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("organization_id");
-
-                    b.Property<int>("Padding")
-                        .HasColumnType("integer")
-                        .HasColumnName("padding");
-
-                    b.Property<string>("Prefix")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("prefix");
-
-                    b.Property<string>("Separator")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasColumnName("separator");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_number_sequences");
-
-                    b.HasIndex("OrganizationId", "Area")
-                        .IsUnique()
-                        .HasDatabaseName("ix_number_sequences_organization_id_area");
-
-                    b.HasIndex("OrganizationId", "DisplayName")
-                        .HasDatabaseName("ix_number_sequences_organization_id_display_name");
-
-                    b.ToTable("number_sequences", (string)null);
                 });
 
             modelBuilder.Entity("ERPKeys.Domain.Modules.Organization.Organization", b =>

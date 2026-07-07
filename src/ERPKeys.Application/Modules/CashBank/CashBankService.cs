@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Modules.CashBank;
 using ERPKeys.Application.Modules.CashBank.DTOs;
 using ERPKeys.Domain.Modules.CashBank;
@@ -94,19 +95,37 @@ public class CashBankService : ICashBankService
 
     // ── Bank Transactions ─────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<BankTransactionSummaryDto>> GetTransactionsAsync(
-        Guid? bankAccountId = null, string? status = null, CancellationToken ct = default)
+    public async Task<PagedResult<BankTransactionSummaryDto>> GetTransactionsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.BankTransactions.Include(t => t.BankAccount).AsQueryable();
         if (bankAccountId.HasValue)
             query = query.Where(t => t.BankAccountId == bankAccountId.Value);
-        if (!string.IsNullOrEmpty(status) && Enum.TryParse<BankTransactionStatus>(status, out var s))
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<BankTransactionStatus>(status, true, out var s))
             query = query.Where(t => t.TransactionStatus == s);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(t =>
+                t.TransactionNumber.ToLower().Contains(term) ||
+                t.Description.ToLower().Contains(term) ||
+                (t.Reference != null && t.Reference.ToLower().Contains(term)) ||
+                (t.CounterpartyName != null && t.CounterpartyName.ToLower().Contains(term)) ||
+                (t.BankAccount != null && t.BankAccount.AccountName.ToLower().Contains(term)));
+        }
 
+        var total = await query.CountAsync(ct);
         var list = await query.OrderByDescending(t => t.TransactionDate)
                               .ThenByDescending(t => t.CreatedAt)
+                              .Skip((page - 1) * pageSize)
+                              .Take(pageSize)
                               .ToListAsync(ct);
-        return list.Select(ToTxSummaryDto);
+        return new PagedResult<BankTransactionSummaryDto>(
+            list.Select(ToTxSummaryDto).ToList(), page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<BankTransactionDto?> GetTransactionAsync(Guid id, CancellationToken ct = default)
@@ -206,15 +225,37 @@ public class CashBankService : ICashBankService
 
     // ── Bank Reconciliation ───────────────────────────────────────────────────
 
-    public async Task<IEnumerable<BankReconciliationSummaryDto>> GetReconciliationsAsync(
-        Guid? bankAccountId = null, CancellationToken ct = default)
+    public async Task<PagedResult<BankReconciliationSummaryDto>> GetReconciliationsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.BankReconciliations.Include(r => r.BankAccount).AsQueryable();
         if (bankAccountId.HasValue)
             query = query.Where(r => r.BankAccountId == bankAccountId.Value);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReconciliationStatus>(status, true, out var s))
+            query = query.Where(r => r.Status == s);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(r =>
+                r.ReconciliationNumber.ToLower().Contains(term) ||
+                (r.Notes != null && r.Notes.ToLower().Contains(term)) ||
+                (r.CompletedBy != null && r.CompletedBy.ToLower().Contains(term)) ||
+                (r.BankAccount != null && r.BankAccount.AccountName.ToLower().Contains(term)));
+        }
 
-        var list = await query.OrderByDescending(r => r.StatementEndDate).ToListAsync(ct);
-        return list.Select(ToReconSummaryDto);
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(r => r.StatementEndDate)
+            .ThenByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<BankReconciliationSummaryDto>(
+            list.Select(ToReconSummaryDto).ToList(), page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<BankReconciliationDto?> GetReconciliationAsync(Guid id, CancellationToken ct = default)
@@ -335,17 +376,37 @@ public class CashBankService : ICashBankService
 
     // ── Cash Journals ─────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<CashJournalSummaryDto>> GetCashJournalsAsync(
-        Guid? bankAccountId = null, string? status = null, CancellationToken ct = default)
+    public async Task<PagedResult<CashJournalSummaryDto>> GetCashJournalsAsync(
+        Guid? bankAccountId = null, string? status = null, string? search = null,
+        int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.CashJournals.Include(j => j.BankAccount).AsQueryable();
         if (bankAccountId.HasValue)
             query = query.Where(j => j.BankAccountId == bankAccountId.Value);
-        if (!string.IsNullOrEmpty(status) && Enum.TryParse<CashJournalStatus>(status, out var s))
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<CashJournalStatus>(status, true, out var s))
             query = query.Where(j => j.Status == s);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(j =>
+                j.JournalNumber.ToLower().Contains(term) ||
+                j.Description.ToLower().Contains(term) ||
+                (j.Notes != null && j.Notes.ToLower().Contains(term)) ||
+                (j.BankAccount != null && j.BankAccount.AccountName.ToLower().Contains(term)));
+        }
 
-        var list = await query.OrderByDescending(j => j.JournalDate).ToListAsync(ct);
-        return list.Select(ToJournalSummaryDto);
+        var total = await query.CountAsync(ct);
+        var list = await query
+            .OrderByDescending(j => j.JournalDate)
+            .ThenByDescending(j => j.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return new PagedResult<CashJournalSummaryDto>(
+            list.Select(ToJournalSummaryDto).ToList(), page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize));
     }
 
     public async Task<CashJournalDto?> GetCashJournalAsync(Guid id, CancellationToken ct = default)

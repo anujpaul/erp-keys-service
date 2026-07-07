@@ -91,9 +91,12 @@ public class ProductManagementController : ControllerBase
         [FromQuery] Guid? brandId,
         [FromQuery] string? status,
         [FromQuery] string? search,
-        CancellationToken ct)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
         => Ok(await _pm.GetProductsAsync(
-            categoryId?.ToString(), brandId?.ToString(), status, search, ct));
+            categoryId?.ToString(), brandId?.ToString(), status, search,
+            page, pageSize, ct));
 
     [HttpGet("products/{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id, CancellationToken ct)
