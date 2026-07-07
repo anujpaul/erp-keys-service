@@ -250,7 +250,21 @@ public class WarehouseManagementService : IWarehouseManagementService
     public async Task<bool> ConfirmInboundOrderAsync(Guid id)          => await AdvanceInbound(id, o => o.Confirm());
     public async Task<bool> MarkInboundInTransitAsync(Guid id)         => await AdvanceInbound(id, o => o.MarkInTransit());
     public async Task<bool> StartReceivingInboundAsync(Guid id)        => await AdvanceInbound(id, o => o.StartReceiving());
-    public async Task<bool> CompleteInboundOrderAsync(Guid id)         => await AdvanceInbound(id, o => o.Complete(DateTime.UtcNow));
+    public async Task<bool> CompleteInboundOrderAsync(Guid id)
+    {
+        var order = await _db.InboundOrders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == id);
+        if (order is null) return false;
+
+        if (order.Lines.Any(line => line.ReceivedQuantity < line.OrderedQuantity))
+            throw new InvalidOperationException(
+                "Receive all inbound order line quantities before completing the order.");
+
+        order.Complete(DateTime.UtcNow);
+        await _db.SaveChangesAsync();
+        return true;
+    }
     public async Task<bool> CancelInboundOrderAsync(Guid id)           => await AdvanceInbound(id, o => o.Cancel());
 
     public async Task<bool> ReceiveInboundLinesAsync(Guid orderId, List<ReceiveInboundLineDto> lines)

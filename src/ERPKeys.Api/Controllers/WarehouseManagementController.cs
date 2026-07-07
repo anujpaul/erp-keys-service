@@ -138,8 +138,11 @@ public class WarehouseManagementController : ControllerBase
     }
 
     [HttpPost("inbound/{id:guid}/complete")]
-    public async Task<IActionResult> CompleteInbound(Guid id) =>
-        await _svc.CompleteInboundOrderAsync(id) ? Ok() : NotFound();
+    public async Task<IActionResult> CompleteInbound(Guid id)
+    {
+        try { return await _svc.CompleteInboundOrderAsync(id) ? Ok() : NotFound(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
 
     [HttpPost("inbound/{id:guid}/cancel")]
     public async Task<IActionResult> CancelInbound(Guid id) =>
