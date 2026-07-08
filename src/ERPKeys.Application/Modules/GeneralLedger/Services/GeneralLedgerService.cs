@@ -79,6 +79,26 @@ public interface IGeneralLedgerService
     Task<AccrualPostingRunDto> PostAccrualSchemeAsync(
         Guid schemeId, PostAccrualSchemeRequest req, CancellationToken ct = default);
     Task<IEnumerable<TrialBalanceLineDto>> GetTrialBalanceAsync(Guid fiscalPeriodId, CancellationToken ct = default);
+    Task<PagedResult<LedgerTransactionDto>> GetLedgerTransactionsAsync(
+        DateTime fromDate, DateTime toDate, Guid? ledgerId = null,
+        Guid? accountId = null, Guid? financialDimensionValueId = null,
+        string? search = null, int page = 1, int pageSize = 50,
+        CancellationToken ct = default);
+    Task<AccountInquiryDto> GetAccountInquiryAsync(
+        Guid accountId, DateTime fromDate, DateTime toDate,
+        Guid? ledgerId = null, Guid? financialDimensionValueId = null,
+        CancellationToken ct = default);
+    Task<GeneralLedgerDetailDto> GetGeneralLedgerDetailAsync(
+        DateTime fromDate, DateTime toDate, Guid? ledgerId = null,
+        Guid? accountId = null, Guid? financialDimensionValueId = null,
+        CancellationToken ct = default);
+    Task<IncomeStatementDto> GetIncomeStatementAsync(
+        DateTime fromDate, DateTime toDate, Guid? ledgerId = null,
+        bool excludeYearEndClose = true, CancellationToken ct = default);
+    Task<BalanceSheetDto> GetBalanceSheetAsync(
+        DateTime asOfDate, Guid? ledgerId = null, CancellationToken ct = default);
+    Task<CashFlowDto> GetCashFlowAsync(
+        DateTime fromDate, DateTime toDate, Guid? ledgerId = null, CancellationToken ct = default);
 
     // Currencies
     Task<IEnumerable<CurrencyDto>> GetCurrenciesAsync(bool activeOnly = false, CancellationToken ct = default);
@@ -94,6 +114,15 @@ public interface IGeneralLedgerService
 
 public class GeneralLedgerService : IGeneralLedgerService
 {
+    private const string YearEndCloseJournalType = "Year End Close";
+    private const string YearEndCloseReferencePrefix = "YEAR-END-CLOSE:";
+    private static readonly HashSet<string> ProfitAndLossAccountTypeCodes = new(
+        ["REVENUE", "EXPENSE", "COGS", "PROFIT AND LOSS"],
+        StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> BalanceSheetAccountTypeCodes = new(
+        ["ASSET", "LIABILITY", "EQUITY"],
+        StringComparer.OrdinalIgnoreCase);
+
     private readonly IAppDbContext _db;
     private readonly ICurrentOrganizationService _org;
     private readonly ICurrentUserService _user;
@@ -498,10 +527,172 @@ public class GeneralLedgerService : IGeneralLedgerService
 
     public async Task CloseFiscalYearAsync(Guid id, CancellationToken ct = default)
     {
-        var fy = await _db.FiscalYears.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
+        var fy = await _db.FiscalYears
+            .Include(x => x.Periods)
+            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
             ?? throw new InvalidOperationException("Fiscal year not found.");
+
+        if (fy.Status == FiscalYearStatus.Closed)
+            return;
+
+        var parameters = await _db.GeneralLedgerParameters
+            .FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException(
+                "General Ledger parameters must be configured before closing a fiscal year.");
+
+        if (!parameters.RetainedEarningsAccountId.HasValue)
+            throw new InvalidOperationException(
+                "A retained earnings account must be configured before closing a fiscal year.");
+
+        var ledger = await _db.Ledgers
+            .Include(l => l.FunctionalCurrency)
+            .FirstOrDefaultAsync(l => l.Id == parameters.DefaultLedgerId && l.IsActive, ct)
+            ?? throw new InvalidOperationException("Default ledger not found or inactive.");
+
+        if (ledger.FiscalCalendarId != fy.FiscalCalendarId)
+            throw new InvalidOperationException(
+                "The default ledger fiscal calendar does not match this fiscal year.");
+
+        var retainedEarningsAccount = await _db.Accounts
+            .Include(a => a.AccountType)
+            .FirstOrDefaultAsync(a =>
+                a.Id == parameters.RetainedEarningsAccountId.Value
+                && a.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && a.Status == AccountStatus.Active
+                && !a.IsHeaderAccount
+                && a.AllowManualEntry,
+                ct)
+            ?? throw new InvalidOperationException(
+                "Retained earnings must be an active posting account in the default ledger's chart of accounts.");
+
+        var finalPeriod = fy.Periods
+            .Where(p => !p.IsDeleted)
+            .OrderByDescending(p => p.EndDate)
+            .ThenByDescending(p => p.PeriodNumber)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "A fiscal year must have at least one period before it can be closed.");
+
+        if (finalPeriod.Status != FiscalPeriodStatus.Open &&
+            parameters.AllowPostingToClosedPeriods != true)
+        {
+            throw new InvalidOperationException(
+                "The final fiscal period must be open before year-end close can post retained earnings.");
+        }
+
+        var fiscalPeriodIds = fy.Periods
+            .Where(p => !p.IsDeleted)
+            .Select(p => p.Id)
+            .ToList();
+
+        var draftCount = await _db.JournalEntries.CountAsync(
+            j => fiscalPeriodIds.Contains(j.FiscalPeriodId)
+                && j.LedgerId == ledger.Id
+                && j.Status == JournalEntryStatus.Draft
+                && !j.IsDeleted,
+            ct);
+        if (draftCount > 0)
+            throw new InvalidOperationException(
+                $"Fiscal year cannot be closed while it has {draftCount} draft journal entr{(draftCount == 1 ? "y" : "ies")}.");
+
+        var closeReference = $"{YearEndCloseReferencePrefix}{fy.Id:N}";
+        var existingClose = await _db.JournalEntries
+            .FirstOrDefaultAsync(j =>
+                j.LedgerId == ledger.Id
+                && j.Reference == closeReference
+                && j.JournalType == YearEndCloseJournalType
+                && !j.IsDeleted,
+                ct);
+
+        if (existingClose is not null)
+        {
+            if (existingClose.Status == JournalEntryStatus.Posted)
+            {
+                fy.Close();
+                await _db.SaveChangesAsync(ct);
+                return;
+            }
+
+            if (existingClose.Status == JournalEntryStatus.Draft)
+                throw new InvalidOperationException(
+                    $"Draft year-end close journal {existingClose.EntryNumber} already exists. Post or void it before closing the fiscal year.");
+        }
+
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
+        var profitAndLossBalances = await _db.JournalLines
+            .Include(l => l.Account)
+                .ThenInclude(a => a!.AccountType)
+            .Include(l => l.JournalEntry)
+            .Where(l => !l.IsDeleted
+                && l.JournalEntry != null
+                && fiscalPeriodIds.Contains(l.JournalEntry.FiscalPeriodId)
+                && l.JournalEntry.LedgerId == ledger.Id
+                && (l.JournalEntry.Status == JournalEntryStatus.Posted
+                    || (l.JournalEntry.Status == JournalEntryStatus.Voided
+                        && l.JournalEntry.ReversedByJournalEntryId != null))
+                && l.Account != null
+                && l.Account.ChartOfAccountsId == ledger.ChartOfAccountsId
+                && l.Account.AccountType != null
+                && ProfitAndLossAccountTypeCodes.Contains(l.Account.AccountType.Code))
+            .GroupBy(l => new
+            {
+                l.AccountId,
+                l.Account!.AccountNumber,
+                l.Account.Name
+            })
+            .Select(g => new
+            {
+                g.Key.AccountId,
+                g.Key.AccountNumber,
+                g.Key.Name,
+                Balance = g.Sum(l => l.Debit) - g.Sum(l => l.Credit)
+            })
+            .Where(x => x.Balance != 0)
+            .OrderBy(x => x.AccountNumber)
+            .ToListAsync(ct);
+
+        if (profitAndLossBalances.Count > 0)
+        {
+            var entryNumber = await _numberSequences.ReserveNextAsync(
+                NumberSequenceAreas.JournalEntry, finalPeriod.EndDate, ct);
+            var closingEntry = new JournalEntry(
+                _org.OrganizationId,
+                entryNumber,
+                finalPeriod.EndDate,
+                finalPeriod.Id,
+                Truncate($"Year-end close for {fy.Name}", 500),
+                closeReference,
+                YearEndCloseJournalType,
+                ledger.FunctionalCurrency?.Code ?? "USD",
+                ledger.Id);
+
+            foreach (var balance in profitAndLossBalances)
+            {
+                closingEntry.AddLine(
+                    balance.AccountId,
+                    Truncate($"Close {balance.AccountNumber} - {balance.Name}", 500),
+                    balance.Balance < 0 ? Math.Abs(balance.Balance) : 0,
+                    balance.Balance > 0 ? balance.Balance : 0);
+            }
+
+            var difference = closingEntry.TotalDebit - closingEntry.TotalCredit;
+            if (difference != 0)
+            {
+                closingEntry.AddLine(
+                    retainedEarningsAccount.Id,
+                    Truncate($"Close net income to retained earnings - {fy.Name}", 500),
+                    difference < 0 ? Math.Abs(difference) : 0,
+                    difference > 0 ? difference : 0);
+            }
+
+            closingEntry.Post();
+            _db.JournalEntries.Add(closingEntry);
+        }
+
         fy.Close();
         await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task<IEnumerable<FiscalPeriodDto>> GetPeriodsAsync(Guid fiscalYearId, CancellationToken ct = default)
@@ -1677,6 +1868,286 @@ public class GeneralLedgerService : IGeneralLedgerService
 
     // ── Currencies ────────────────────────────────────────────────────────────
 
+    public async Task<PagedResult<LedgerTransactionDto>> GetLedgerTransactionsAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        Guid? accountId = null,
+        Guid? financialDimensionValueId = null,
+        string? search = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 250);
+
+        var query = ReportLinesQuery(fromDate, toDate, ledgerId, accountId, financialDimensionValueId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(l =>
+                l.JournalEntry!.EntryNumber.ToLower().Contains(term)
+                || l.JournalEntry.Description.ToLower().Contains(term)
+                || l.JournalEntry.Reference.ToLower().Contains(term)
+                || l.Description.ToLower().Contains(term)
+                || l.Account!.AccountNumber.ToLower().Contains(term)
+                || l.Account.Name.ToLower().Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+        var lines = await query
+            .OrderBy(l => l.JournalEntry!.EntryDate)
+            .ThenBy(l => l.JournalEntry!.EntryNumber)
+            .ThenBy(l => l.LineOrder)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<LedgerTransactionDto>(
+            lines.Select(ToLedgerTransactionDto).ToList(),
+            page,
+            pageSize,
+            totalCount,
+            (int)Math.Ceiling(totalCount / (double)pageSize));
+    }
+
+    public async Task<AccountInquiryDto> GetAccountInquiryAsync(
+        Guid accountId,
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        Guid? financialDimensionValueId = null,
+        CancellationToken ct = default)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+
+        var account = await _db.Accounts
+            .Include(a => a.AccountType)
+            .FirstOrDefaultAsync(a => a.Id == accountId && !a.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Account not found.");
+
+        var openingLines = await ReportLinesThroughDateQuery(
+                fromDate.Date.AddDays(-1), ledgerId, accountId, financialDimensionValueId)
+            .ToListAsync(ct);
+        var periodLines = await ReportLinesQuery(
+                fromDate, toDate, ledgerId, accountId, financialDimensionValueId)
+            .OrderBy(l => l.JournalEntry!.EntryDate)
+            .ThenBy(l => l.JournalEntry!.EntryNumber)
+            .ThenBy(l => l.LineOrder)
+            .ToListAsync(ct);
+
+        var openingBalance = openingLines.Sum(SignedBalance);
+        var periodDebit = periodLines.Sum(l => l.Debit);
+        var periodCredit = periodLines.Sum(l => l.Credit);
+
+        return new AccountInquiryDto(
+            account.Id,
+            account.AccountNumber,
+            account.Name,
+            account.AccountType?.Name ?? string.Empty,
+            fromDate.Date,
+            toDate.Date,
+            openingBalance,
+            periodDebit,
+            periodCredit,
+            openingBalance + periodLines.Sum(SignedBalance),
+            periodLines.Select(ToLedgerTransactionDto).ToList());
+    }
+
+    public async Task<GeneralLedgerDetailDto> GetGeneralLedgerDetailAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        Guid? accountId = null,
+        Guid? financialDimensionValueId = null,
+        CancellationToken ct = default)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+
+        var lines = await ReportLinesQuery(fromDate, toDate, ledgerId, accountId, financialDimensionValueId)
+            .OrderBy(l => l.JournalEntry!.EntryDate)
+            .ThenBy(l => l.JournalEntry!.EntryNumber)
+            .ThenBy(l => l.LineOrder)
+            .ToListAsync(ct);
+
+        return new GeneralLedgerDetailDto(
+            fromDate.Date,
+            toDate.Date,
+            lines.Select(ToLedgerTransactionDto).ToList(),
+            lines.Sum(l => l.Debit),
+            lines.Sum(l => l.Credit),
+            lines.Sum(l => l.Debit) - lines.Sum(l => l.Credit));
+    }
+
+    public async Task<IncomeStatementDto> GetIncomeStatementAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        bool excludeYearEndClose = true,
+        CancellationToken ct = default)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+
+        var lines = await ReportLinesQuery(
+                fromDate, toDate, ledgerId, includeYearEndClose: !excludeYearEndClose)
+            .Where(l => l.Account!.AccountType != null
+                && ProfitAndLossAccountTypeCodes.Contains(l.Account.AccountType.Code))
+            .ToListAsync(ct);
+
+        var statementLines = lines
+            .GroupBy(l => new
+            {
+                TypeCode = l.Account!.AccountType!.Code,
+                l.Account.AccountNumber,
+                l.Account.Name
+            })
+            .Select(g =>
+            {
+                var isRevenue = IsRevenueAccountType(g.Key.TypeCode);
+                var amount = isRevenue
+                    ? g.Sum(l => l.Credit) - g.Sum(l => l.Debit)
+                    : g.Sum(l => l.Debit) - g.Sum(l => l.Credit);
+                return new FinancialStatementLineDto(
+                    isRevenue ? "Revenue" : "Expenses",
+                    g.Key.AccountNumber,
+                    g.Key.Name,
+                    amount);
+            })
+            .OrderBy(l => l.Section)
+            .ThenBy(l => l.AccountNumber)
+            .ToList();
+
+        var totalRevenue = statementLines.Where(l => l.Section == "Revenue").Sum(l => l.Amount);
+        var totalExpenses = statementLines.Where(l => l.Section == "Expenses").Sum(l => l.Amount);
+
+        return new IncomeStatementDto(
+            fromDate.Date,
+            toDate.Date,
+            statementLines,
+            totalRevenue,
+            totalExpenses,
+            totalRevenue - totalExpenses);
+    }
+
+    public async Task<BalanceSheetDto> GetBalanceSheetAsync(
+        DateTime asOfDate,
+        Guid? ledgerId = null,
+        CancellationToken ct = default)
+    {
+        var lines = await ReportLinesThroughDateQuery(asOfDate, ledgerId)
+            .Where(l => l.Account!.AccountType != null
+                && BalanceSheetAccountTypeCodes.Contains(l.Account.AccountType.Code))
+            .ToListAsync(ct);
+
+        var statementLines = lines
+            .GroupBy(l => new
+            {
+                TypeCode = l.Account!.AccountType!.Code,
+                l.Account.AccountNumber,
+                l.Account.Name
+            })
+            .Select(g =>
+            {
+                var section = IsAssetAccountType(g.Key.TypeCode)
+                    ? "Assets"
+                    : IsLiabilityAccountType(g.Key.TypeCode)
+                        ? "Liabilities"
+                        : "Equity";
+                var amount = section == "Assets"
+                    ? g.Sum(l => l.Debit) - g.Sum(l => l.Credit)
+                    : g.Sum(l => l.Credit) - g.Sum(l => l.Debit);
+                return new FinancialStatementLineDto(section, g.Key.AccountNumber, g.Key.Name, amount);
+            })
+            .OrderBy(l => l.Section)
+            .ThenBy(l => l.AccountNumber)
+            .ToList();
+
+        var currentYearEarnings = await CalculateCurrentYearEarningsAsync(asOfDate, ledgerId, ct);
+        if (currentYearEarnings != 0m)
+        {
+            statementLines.Add(new FinancialStatementLineDto(
+                "Equity",
+                string.Empty,
+                "Current Year Earnings",
+                currentYearEarnings));
+        }
+
+        var totalAssets = statementLines.Where(l => l.Section == "Assets").Sum(l => l.Amount);
+        var totalLiabilities = statementLines.Where(l => l.Section == "Liabilities").Sum(l => l.Amount);
+        var totalEquity = statementLines.Where(l => l.Section == "Equity").Sum(l => l.Amount);
+        var liabilitiesAndEquity = totalLiabilities + totalEquity;
+
+        return new BalanceSheetDto(
+            asOfDate.Date,
+            statementLines,
+            totalAssets,
+            totalLiabilities,
+            totalEquity,
+            liabilitiesAndEquity,
+            totalAssets - liabilitiesAndEquity);
+    }
+
+    public async Task<CashFlowDto> GetCashFlowAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        CancellationToken ct = default)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+
+        var cashAccountIds = await _db.BankAccounts
+            .Where(a => !a.IsDeleted && a.GLAccountId.HasValue)
+            .Select(a => a.GLAccountId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (cashAccountIds.Count == 0)
+            throw new InvalidOperationException(
+                "Cash flow requires at least one Cash & Bank account linked to a GL account.");
+
+        var openingLines = await ReportLinesThroughDateQuery(fromDate.Date.AddDays(-1), ledgerId)
+            .Where(l => cashAccountIds.Contains(l.AccountId))
+            .ToListAsync(ct);
+        var periodLines = await ReportLinesQuery(fromDate, toDate, ledgerId)
+            .Where(l => cashAccountIds.Contains(l.AccountId))
+            .OrderBy(l => l.JournalEntry!.EntryDate)
+            .ThenBy(l => l.JournalEntry!.EntryNumber)
+            .ThenBy(l => l.LineOrder)
+            .ToListAsync(ct);
+
+        var beginningCash = openingLines.Sum(SignedBalance);
+        var cashFlowLines = periodLines
+            .Select(l =>
+            {
+                var movement = SignedBalance(l);
+                return new CashFlowLineDto(
+                    l.JournalEntry?.EntryDate ?? default,
+                    l.JournalEntry?.EntryNumber ?? string.Empty,
+                    l.Account?.AccountNumber ?? string.Empty,
+                    l.Account?.Name ?? string.Empty,
+                    l.Description,
+                    movement > 0 ? movement : 0m,
+                    movement < 0 ? Math.Abs(movement) : 0m);
+            })
+            .ToList();
+
+        var inflows = cashFlowLines.Sum(l => l.Inflow);
+        var outflows = cashFlowLines.Sum(l => l.Outflow);
+
+        return new CashFlowDto(
+            fromDate.Date,
+            toDate.Date,
+            beginningCash,
+            inflows,
+            outflows,
+            inflows - outflows,
+            beginningCash + inflows - outflows,
+            cashFlowLines);
+    }
+
     public async Task<IEnumerable<CurrencyDto>> GetCurrenciesAsync(bool activeOnly = false, CancellationToken ct = default)
     {
         var query = _db.Currencies.Where(c => !c.IsDeleted);
@@ -1986,6 +2457,158 @@ public class GeneralLedgerService : IGeneralLedgerService
         }
         return amounts;
     }
+
+    private static void ValidateReportDateRange(DateTime fromDate, DateTime toDate)
+    {
+        if (fromDate.Date > toDate.Date)
+            throw new ArgumentException("Report from date must be on or before the to date.");
+    }
+
+    private IQueryable<JournalLine> ReportLinesQuery(
+        DateTime fromDate,
+        DateTime toDate,
+        Guid? ledgerId = null,
+        Guid? accountId = null,
+        Guid? financialDimensionValueId = null,
+        bool includeYearEndClose = true)
+    {
+        ValidateReportDateRange(fromDate, toDate);
+        return ReportLinesBaseQuery(
+            fromDate.Date,
+            toDate.Date.AddDays(1),
+            ledgerId,
+            accountId,
+            financialDimensionValueId,
+            includeYearEndClose);
+    }
+
+    private IQueryable<JournalLine> ReportLinesThroughDateQuery(
+        DateTime asOfDate,
+        Guid? ledgerId = null,
+        Guid? accountId = null,
+        Guid? financialDimensionValueId = null,
+        bool includeYearEndClose = true)
+        => ReportLinesBaseQuery(
+            DateTime.MinValue,
+            asOfDate.Date.AddDays(1),
+            ledgerId,
+            accountId,
+            financialDimensionValueId,
+            includeYearEndClose);
+
+    private IQueryable<JournalLine> ReportLinesBaseQuery(
+        DateTime fromDateInclusive,
+        DateTime toDateExclusive,
+        Guid? ledgerId,
+        Guid? accountId,
+        Guid? financialDimensionValueId,
+        bool includeYearEndClose)
+    {
+        var query = _db.JournalLines
+            .Include(l => l.Account).ThenInclude(a => a!.AccountType)
+            .Include(l => l.JournalEntry).ThenInclude(e => e!.FiscalPeriod)
+            .Include(l => l.DimensionValues)
+                .ThenInclude(dv => dv.FinancialDimensionValue)
+                .ThenInclude(v => v!.FinancialDimension)
+            .Where(l => !l.IsDeleted
+                && l.JournalEntry != null
+                && !l.JournalEntry.IsDeleted
+                && l.JournalEntry.EntryDate >= fromDateInclusive
+                && l.JournalEntry.EntryDate < toDateExclusive
+                && (l.JournalEntry.Status == JournalEntryStatus.Posted
+                    || (l.JournalEntry.Status == JournalEntryStatus.Voided
+                        && l.JournalEntry.ReversedByJournalEntryId != null)));
+
+        if (ledgerId.HasValue)
+            query = query.Where(l => l.JournalEntry!.LedgerId == ledgerId.Value);
+        if (accountId.HasValue)
+            query = query.Where(l => l.AccountId == accountId.Value);
+        if (financialDimensionValueId.HasValue)
+            query = query.Where(l => l.DimensionValues.Any(dv =>
+                !dv.IsDeleted && dv.FinancialDimensionValueId == financialDimensionValueId.Value));
+        if (!includeYearEndClose)
+            query = query.Where(l => l.JournalEntry!.JournalType != YearEndCloseJournalType);
+
+        return query;
+    }
+
+    private async Task<decimal> CalculateCurrentYearEarningsAsync(
+        DateTime asOfDate,
+        Guid? ledgerId,
+        CancellationToken ct)
+    {
+        var period = await _db.FiscalPeriods
+            .Include(p => p.FiscalYear)
+            .Where(p => !p.IsDeleted
+                && p.StartDate <= asOfDate.Date
+                && p.EndDate >= asOfDate.Date)
+            .OrderByDescending(p => p.StartDate)
+            .FirstOrDefaultAsync(ct);
+
+        var startDate = period?.FiscalYear?.StartDate.Date ?? new DateTime(asOfDate.Year, 1, 1);
+        var lines = await ReportLinesQuery(
+                startDate,
+                asOfDate,
+                ledgerId,
+                includeYearEndClose: false)
+            .Where(l => l.Account!.AccountType != null
+                && ProfitAndLossAccountTypeCodes.Contains(l.Account.AccountType.Code))
+            .ToListAsync(ct);
+
+        return lines.Sum(l =>
+            IsRevenueAccountType(l.Account!.AccountType!.Code)
+                ? l.Credit - l.Debit
+                : l.Debit - l.Credit);
+    }
+
+    private static decimal SignedBalance(JournalLine line)
+    {
+        var typeCode = line.Account?.AccountType?.Code ?? string.Empty;
+        return IsLiabilityAccountType(typeCode)
+            || IsEquityAccountType(typeCode)
+            || IsRevenueAccountType(typeCode)
+            ? line.Credit - line.Debit
+            : line.Debit - line.Credit;
+    }
+
+    private static bool IsAssetAccountType(string typeCode)
+        => string.Equals(typeCode, "ASSET", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLiabilityAccountType(string typeCode)
+        => string.Equals(typeCode, "LIABILITY", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsEquityAccountType(string typeCode)
+        => string.Equals(typeCode, "EQUITY", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRevenueAccountType(string typeCode)
+        => string.Equals(typeCode, "REVENUE", StringComparison.OrdinalIgnoreCase);
+
+    private static LedgerTransactionDto ToLedgerTransactionDto(JournalLine line) => new(
+        line.JournalEntryId,
+        line.JournalEntry?.EntryNumber ?? string.Empty,
+        line.JournalEntry?.EntryDate ?? default,
+        line.JournalEntry?.FiscalPeriod?.Name ?? string.Empty,
+        line.JournalEntry?.JournalType ?? string.Empty,
+        line.JournalEntry?.Reference ?? string.Empty,
+        line.AccountId,
+        line.Account?.AccountNumber ?? string.Empty,
+        line.Account?.Name ?? string.Empty,
+        line.Account?.AccountType?.Name ?? string.Empty,
+        line.Description,
+        line.Debit,
+        line.Credit,
+        SignedBalance(line),
+        line.DimensionValues
+            .Where(dv => !dv.IsDeleted && dv.FinancialDimensionValue?.FinancialDimension is not null)
+            .OrderBy(dv => dv.FinancialDimensionValue!.FinancialDimension!.Name)
+            .Select(dv => new JournalLineDimensionDto(
+                dv.FinancialDimensionValue!.FinancialDimensionId,
+                dv.FinancialDimensionValue.FinancialDimension!.Code,
+                dv.FinancialDimensionValue.FinancialDimension.Name,
+                dv.FinancialDimensionValueId,
+                dv.FinancialDimensionValue.Code,
+                dv.FinancialDimensionValue.Name))
+            .ToList());
 
     private static JournalEntryDto ToJournalEntryDto(JournalEntry e) => new(
         e.Id, e.LedgerId, e.Ledger?.Code ?? string.Empty,

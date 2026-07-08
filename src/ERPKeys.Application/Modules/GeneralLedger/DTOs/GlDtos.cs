@@ -275,3 +275,83 @@ public record UpdateExchangeRateRequest(decimal ExchangeRate);
 // ── Reports ───────────────────────────────────────────────────────────────────
 public record TrialBalanceLineDto(string AccountNumber, string AccountName,
     string AccountType, decimal TotalDebit, decimal TotalCredit, decimal Balance);
+
+public record LedgerTransactionDto(
+    Guid JournalEntryId,
+    string EntryNumber,
+    DateTime EntryDate,
+    string FiscalPeriodName,
+    string JournalType,
+    string Reference,
+    Guid AccountId,
+    string AccountNumber,
+    string AccountName,
+    string AccountType,
+    string LineDescription,
+    decimal Debit,
+    decimal Credit,
+    decimal Balance,
+    IReadOnlyList<JournalLineDimensionDto> Dimensions);
+
+public record AccountInquiryDto(
+    Guid AccountId,
+    string AccountNumber,
+    string AccountName,
+    string AccountType,
+    DateTime FromDate,
+    DateTime ToDate,
+    decimal OpeningBalance,
+    decimal PeriodDebit,
+    decimal PeriodCredit,
+    decimal EndingBalance,
+    IReadOnlyList<LedgerTransactionDto> Transactions);
+
+public record GeneralLedgerDetailDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    IReadOnlyList<LedgerTransactionDto> Transactions,
+    decimal TotalDebit,
+    decimal TotalCredit,
+    decimal NetActivity);
+
+public record FinancialStatementLineDto(
+    string Section,
+    string AccountNumber,
+    string AccountName,
+    decimal Amount);
+
+public record IncomeStatementDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    IReadOnlyList<FinancialStatementLineDto> Lines,
+    decimal TotalRevenue,
+    decimal TotalExpenses,
+    decimal NetIncome);
+
+public record BalanceSheetDto(
+    DateTime AsOfDate,
+    IReadOnlyList<FinancialStatementLineDto> Lines,
+    decimal TotalAssets,
+    decimal TotalLiabilities,
+    decimal TotalEquity,
+    decimal LiabilitiesAndEquity,
+    decimal Difference);
+
+public record CashFlowLineDto(
+    DateTime EntryDate,
+    string EntryNumber,
+    string AccountNumber,
+    string AccountName,
+    string Description,
+    decimal Inflow,
+    decimal Outflow);
+
+public record CashFlowDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    decimal BeginningCash,
+    decimal CashInflows,
+    decimal CashOutflows,
+    decimal NetCashFlow,
+    decimal EndingCash,
+    IReadOnlyList<CashFlowLineDto> Lines);

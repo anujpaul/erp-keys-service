@@ -416,6 +416,102 @@ public class GeneralLedgerController : ControllerBase
 
     // ── Currencies ────────────────────────────────────────────────────────────
 
+    [HttpGet("reports/ledger-transactions")]
+    public async Task<IActionResult> GetLedgerTransactions(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] Guid? ledgerId,
+        [FromQuery] Guid? accountId,
+        [FromQuery] Guid? financialDimensionValueId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _svc.GetLedgerTransactionsAsync(
+                fromDate, toDate, ledgerId, accountId, financialDimensionValueId, search, page, pageSize, ct));
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("reports/account-inquiry")]
+    public async Task<IActionResult> GetAccountInquiry(
+        [FromQuery] Guid accountId,
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] Guid? ledgerId,
+        [FromQuery] Guid? financialDimensionValueId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _svc.GetAccountInquiryAsync(
+                accountId, fromDate, toDate, ledgerId, financialDimensionValueId, ct));
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("reports/general-ledger-detail")]
+    public async Task<IActionResult> GetGeneralLedgerDetail(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] Guid? ledgerId,
+        [FromQuery] Guid? accountId,
+        [FromQuery] Guid? financialDimensionValueId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _svc.GetGeneralLedgerDetailAsync(
+                fromDate, toDate, ledgerId, accountId, financialDimensionValueId, ct));
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("reports/income-statement")]
+    public async Task<IActionResult> GetIncomeStatement(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] Guid? ledgerId,
+        [FromQuery] bool excludeYearEndClose = true,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _svc.GetIncomeStatementAsync(fromDate, toDate, ledgerId, excludeYearEndClose, ct));
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("reports/balance-sheet")]
+    public async Task<IActionResult> GetBalanceSheet(
+        [FromQuery] DateTime asOfDate,
+        [FromQuery] Guid? ledgerId,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetBalanceSheetAsync(asOfDate, ledgerId, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("reports/cash-flow")]
+    public async Task<IActionResult> GetCashFlow(
+        [FromQuery] DateTime fromDate,
+        [FromQuery] DateTime toDate,
+        [FromQuery] Guid? ledgerId,
+        CancellationToken ct)
+    {
+        try { return Ok(await _svc.GetCashFlowAsync(fromDate, toDate, ledgerId, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpGet("currencies")]
     public async Task<IActionResult> GetCurrencies([FromQuery] bool activeOnly = false, CancellationToken ct = default)
         => Ok(await _svc.GetCurrenciesAsync(activeOnly, ct));
