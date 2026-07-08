@@ -785,6 +785,8 @@ public class GeneralLedgerService : IGeneralLedgerService
         var query = _db.JournalEntries
             .Include(e => e.Ledger)
             .Include(e => e.FiscalPeriod)
+            .Include(e => e.ReversalOfJournalEntry)
+            .Include(e => e.ReversedByJournalEntry)
             .Include(e => e.Lines).ThenInclude(l => l.Account)
             .Include(e => e.Lines).ThenInclude(l => l.FinancialDimensionSet)
             .Include(e => e.Lines).ThenInclude(l => l.DimensionValues)
@@ -824,6 +826,8 @@ public class GeneralLedgerService : IGeneralLedgerService
         var entry = await _db.JournalEntries
             .Include(e => e.Ledger)
             .Include(e => e.FiscalPeriod)
+            .Include(e => e.ReversalOfJournalEntry)
+            .Include(e => e.ReversedByJournalEntry)
             .Include(e => e.Lines).ThenInclude(l => l.Account)
             .Include(e => e.Lines).ThenInclude(l => l.FinancialDimensionSet)
             .Include(e => e.Lines).ThenInclude(l => l.DimensionValues)
@@ -1601,10 +1605,53 @@ public class GeneralLedgerService : IGeneralLedgerService
     {
         var entry = await _db.JournalEntries
             .Include(e => e.Lines)
+                .ThenInclude(l => l.DimensionValues)
+            .Include(e => e.FiscalPeriod)
             .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct)
             ?? throw new InvalidOperationException("Journal entry not found.");
-        entry.Void();
+
+        var parameters = await _db.GeneralLedgerParameters.FirstOrDefaultAsync(ct);
+        if (entry.FiscalPeriod?.Status != FiscalPeriodStatus.Open &&
+            parameters?.AllowPostingToClosedPeriods != true)
+        {
+            throw new InvalidOperationException(
+                "Journal entries can only be voided in an open fiscal period.");
+        }
+
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
+        var reversalNumber = await _numberSequences.ReserveNextAsync(
+            NumberSequenceAreas.JournalEntry, entry.EntryDate, ct);
+        var reversal = new JournalEntry(
+            entry.OrganizationId,
+            reversalNumber,
+            entry.EntryDate,
+            entry.FiscalPeriodId,
+            Truncate($"Reversal of {entry.EntryNumber}: {entry.Description}".Trim(), 500),
+            entry.Reference,
+            entry.JournalType,
+            entry.Currency,
+            entry.LedgerId);
+        reversal.MarkAsReversalOf(entry.Id);
+
+        foreach (var line in entry.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.LineOrder))
+        {
+            reversal.AddLine(
+                line.AccountId,
+                Truncate($"Reversal of {entry.EntryNumber}: {line.Description}".Trim(), 500),
+                line.Credit,
+                line.Debit,
+                line.FinancialDimensionSetId,
+                line.DimensionValues
+                    .Where(v => !v.IsDeleted)
+                    .Select(v => v.FinancialDimensionValueId));
+        }
+
+        reversal.Post();
+        _db.JournalEntries.Add(reversal);
+        entry.VoidWithReversal(reversal.Id);
         await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task<IEnumerable<TrialBalanceLineDto>> GetTrialBalanceAsync(Guid fiscalPeriodId, CancellationToken ct = default)
@@ -1613,7 +1660,9 @@ public class GeneralLedgerService : IGeneralLedgerService
             .Include(l => l.Account).ThenInclude(a => a!.AccountType)
             .Include(l => l.JournalEntry)
             .Where(l => l.JournalEntry!.FiscalPeriodId == fiscalPeriodId
-                        && l.JournalEntry.Status == JournalEntryStatus.Posted
+                        && (l.JournalEntry.Status == JournalEntryStatus.Posted
+                            || (l.JournalEntry.Status == JournalEntryStatus.Voided
+                                && l.JournalEntry.ReversedByJournalEntryId != null))
                         && !l.JournalEntry.IsDeleted)
             .ToListAsync(ct);
 
@@ -1945,6 +1994,10 @@ public class GeneralLedgerService : IGeneralLedgerService
         e.Description, e.Reference, e.JournalType,
         e.Status.ToString(), e.Currency,
         e.TotalDebit, e.TotalCredit, e.CreatedAt,
+        e.ReversalOfJournalEntryId,
+        e.ReversalOfJournalEntry?.EntryNumber,
+        e.ReversedByJournalEntryId,
+        e.ReversedByJournalEntry?.EntryNumber,
         e.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.LineOrder).Select(l => new JournalLineDto(
             l.Id, l.AccountId,
             l.Account?.AccountNumber ?? string.Empty,
@@ -1964,6 +2017,9 @@ public class GeneralLedgerService : IGeneralLedgerService
                     dv.FinancialDimensionValue.Code,
                     dv.FinancialDimensionValue.Name))
                 .ToList())).ToList());
+
+    private static string Truncate(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength];
 
     private async Task ValidateDimensionSelectionAsync(
         Guid? setId,

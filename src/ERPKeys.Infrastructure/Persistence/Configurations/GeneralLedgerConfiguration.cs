@@ -190,9 +190,19 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.HasOne(e => e.FiscalPeriod).WithMany().HasForeignKey(e => e.FiscalPeriodId);
         b.HasOne(e => e.Ledger).WithMany().HasForeignKey(e => e.LedgerId)
             .OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.ReversalOfJournalEntry).WithMany()
+            .HasForeignKey(e => e.ReversalOfJournalEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(e => e.ReversedByJournalEntry).WithMany()
+            .HasForeignKey(e => e.ReversedByJournalEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.HasMany(e => e.Lines).WithOne(l => l.JournalEntry)
             .HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.EntryNumber }).IsUnique();
+        b.HasIndex(e => e.ReversalOfJournalEntryId).IsUnique()
+            .HasFilter("reversal_of_journal_entry_id IS NOT NULL AND is_deleted = FALSE");
+        b.HasIndex(e => e.ReversedByJournalEntryId).IsUnique()
+            .HasFilter("reversed_by_journal_entry_id IS NOT NULL AND is_deleted = FALSE");
         // Query filter applied in AppDbContext.OnModelCreating
     }
 }

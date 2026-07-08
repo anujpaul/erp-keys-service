@@ -18,9 +18,13 @@ public class JournalEntry : BaseEntity
     public string Currency { get; private set; } = "USD";
     public decimal TotalDebit { get; private set; }
     public decimal TotalCredit { get; private set; }
+    public Guid? ReversalOfJournalEntryId { get; private set; }
+    public Guid? ReversedByJournalEntryId { get; private set; }
 
     public FiscalPeriod? FiscalPeriod { get; private set; }
     public Ledger? Ledger { get; private set; }
+    public JournalEntry? ReversalOfJournalEntry { get; private set; }
+    public JournalEntry? ReversedByJournalEntry { get; private set; }
 
     private readonly List<JournalLine> _lines = new();
     public IReadOnlyCollection<JournalLine> Lines => _lines.AsReadOnly();
@@ -106,6 +110,35 @@ public class JournalEntry : BaseEntity
             throw new InvalidOperationException($"Debits ({TotalDebit}) must equal credits ({TotalCredit}).");
 
         Status = JournalEntryStatus.Posted;
+        SetUpdated();
+    }
+
+    public void MarkAsReversalOf(Guid originalJournalEntryId)
+    {
+        if (Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Only a draft entry can be marked as a reversal.");
+        if (originalJournalEntryId == Guid.Empty)
+            throw new ArgumentException("Original journal entry is required.");
+        if (originalJournalEntryId == Id)
+            throw new InvalidOperationException("A journal entry cannot reverse itself.");
+
+        ReversalOfJournalEntryId = originalJournalEntryId;
+        SetUpdated();
+    }
+
+    public void VoidWithReversal(Guid reversalJournalEntryId)
+    {
+        if (Status != JournalEntryStatus.Posted)
+            throw new InvalidOperationException("Only a posted entry can be voided.");
+        if (reversalJournalEntryId == Guid.Empty)
+            throw new ArgumentException("Reversal journal entry is required.");
+        if (reversalJournalEntryId == Id)
+            throw new InvalidOperationException("A journal entry cannot reverse itself.");
+        if (ReversedByJournalEntryId.HasValue)
+            throw new InvalidOperationException("This journal entry has already been reversed.");
+
+        ReversedByJournalEntryId = reversalJournalEntryId;
+        Status = JournalEntryStatus.Voided;
         SetUpdated();
     }
 
