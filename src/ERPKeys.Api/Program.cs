@@ -3,7 +3,7 @@ using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Common.Services;
 using ERPKeys.Application.Modules.AccountsPayable.Services;
 using ERPKeys.Application.Modules.AccountsReceivable.Services;
-using ERPKeys.Application.Modules.CashBank;
+using ERPKeys.Application.Modules.CashBank.Services;
 using ERPKeys.Application.Modules.Charges;
 using ERPKeys.Application.Modules.DataManagement.Services;
 using ERPKeys.Application.Modules.Expenses.Services;
@@ -17,6 +17,7 @@ using ERPKeys.Application.Modules.ProductManagement.Services;
 using ERPKeys.Application.Modules.Rag;
 using ERPKeys.Application.Modules.Retail.Services;
 using ERPKeys.Application.Modules.SystemAdmin.Services;
+using ERPKeys.Application.Modules.SystemAdmin.Services.ExternalClients;
 using ERPKeys.Application.Modules.WarehouseManagement;
 using ERPKeys.Application.Modules.Workflow.Services;
 using ERPKeys.Infrastructure.Modules.Rag;
@@ -136,6 +137,11 @@ builder.Services.AddHttpClient<IAddressLookupService, GoogleAddressLookupService
 Func<int, bool> isEven = num => num %2 ==0;
 
 System.Console.WriteLine($"201 is Even? : {isEven(201)}");
+
+builder.Services.AddHttpClient<IIpAddressClient, IpAddressClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 
 builder.Services.AddRateLimiter(options =>
 {

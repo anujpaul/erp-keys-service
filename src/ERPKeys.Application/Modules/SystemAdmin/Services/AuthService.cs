@@ -1,6 +1,7 @@
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
+using ERPKeys.Application.Modules.SystemAdmin.Services.ExternalClients;
 using ERPKeys.Domain.Modules.SystemAdmin;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,16 +12,22 @@ public class AuthService : IAuthService
     private readonly IAppDbContext _db;
     private readonly IPasswordHasher _hasher;
     private readonly IJwtTokenService _jwt;
+    private readonly IIpAddressClient _ipAddressClient;
 
-    public AuthService(IAppDbContext db, IPasswordHasher hasher, IJwtTokenService jwt)
+    public AuthService(IAppDbContext db, IPasswordHasher hasher, IJwtTokenService jwt, IIpAddressClient ipAddressClient)
     {
         _db     = db;
         _hasher = hasher;
         _jwt    = jwt;
+        _ipAddressClient = ipAddressClient;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest req, string? ipAddress, CancellationToken ct = default)
     {
+
+
+        ipAddress = await _ipAddressClient.GetCityAsync(ipAddress);
+
         var user = await _db.AppUsers
             .FirstOrDefaultAsync(u => u.Username == req.Username.ToLowerInvariant() && !u.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invalid username or password.");

@@ -1174,7 +1174,7 @@ public class AccountsReceivableService : IAccountsReceivableService
                     else if (days <= 90) d61_90  += outstanding;
                     else                 over90  += outstanding;
                 }
-                return new ARAgingDto(customer.CustomerNumber, customer.Name,
+                return new ARAgingDto(customer.Id, customer.CustomerNumber, customer.Name,
                     current, d1_30, d31_60, d61_90, over90,
                     current + d1_30 + d31_60 + d61_90 + over90);
             })
@@ -2181,6 +2181,8 @@ public class AccountsReceivableService : IAccountsReceivableService
         var inv = await _db.ARInvoices
             .FirstOrDefaultAsync(i => i.Id == req.ARInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
+        if (inv.CustomerId != req.CustomerId)
+            throw new InvalidOperationException("Invoice does not belong to the selected customer.");
 
         var followUpDate = req.FollowUpDate ?? DateTime.UtcNow.Date.AddDays(7);
         var dunningNumber = await _numberSequences.ReserveNextAsync(
@@ -2190,6 +2192,17 @@ public class AccountsReceivableService : IAccountsReceivableService
             DateTime.UtcNow.Date, followUpDate,
             inv.OutstandingAmount, req.AssignedTo, req.Notes);
         _db.DunningRecords.Add(d);
+        _audit.Add("AR", "Dunning Created", d.Id, "DunningRecord", null, new
+        {
+            d.DunningNumber,
+            d.CustomerId,
+            d.ARInvoiceId,
+            InvoiceNumber = inv.InvoiceNumber,
+            Level = d.Level.ToString(),
+            d.FollowUpDate,
+            d.OutstandingAmount,
+            d.AssignedTo
+        });
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.DunningRecords
@@ -2204,7 +2217,22 @@ public class AccountsReceivableService : IAccountsReceivableService
             .Include(x => x.Customer).Include(x => x.ARInvoice)
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
             ?? throw new InvalidOperationException("Dunning record not found.");
+        var oldValues = new
+        {
+            Status = d.Status.ToString(),
+            d.ResolvedAt,
+            d.ResolutionNotes
+        };
         d.Resolve(notes);
+        _audit.Add("AR", "Dunning Resolved", d.Id, "DunningRecord", oldValues, new
+        {
+            Status = d.Status.ToString(),
+            d.ResolvedAt,
+            d.ResolutionNotes,
+            d.DunningNumber,
+            d.CustomerId,
+            d.ARInvoiceId
+        });
         await _db.SaveChangesAsync(ct);
         return ToDunningDto(d);
     }
@@ -2215,7 +2243,16 @@ public class AccountsReceivableService : IAccountsReceivableService
             .Include(x => x.Customer).Include(x => x.ARInvoice)
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
             ?? throw new InvalidOperationException("Dunning record not found.");
+        var oldValues = new { Status = d.Status.ToString(), Level = d.Level.ToString() };
         d.Escalate();
+        _audit.Add("AR", "Dunning Escalated", d.Id, "DunningRecord", oldValues, new
+        {
+            Status = d.Status.ToString(),
+            Level = d.Level.ToString(),
+            d.DunningNumber,
+            d.CustomerId,
+            d.ARInvoiceId
+        });
         await _db.SaveChangesAsync(ct);
         return ToDunningDto(d);
     }

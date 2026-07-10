@@ -18,7 +18,6 @@ using ERPKeys.Domain.Modules.Payments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using PMProduct = ERPKeys.Domain.Modules.ProductManagement.Product;
-using Pgvector.EntityFrameworkCore;
 
 namespace ERPKeys.Infrastructure.Persistence;
 

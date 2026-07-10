@@ -185,7 +185,7 @@ public record CreateARPaymentRequest(
     decimal Amount, string PaymentMethod = "BankTransfer", string? Reference = null);
 
 // ── Reports ───────────────────────────────────────────────────────────────────
-public record ARAgingDto(string CustomerNumber, string CustomerName,
+public record ARAgingDto(Guid CustomerId, string CustomerNumber, string CustomerName,
     decimal Current, decimal Days1_30, decimal Days31_60, decimal Days61_90,
     decimal Over90, decimal Total);
 
