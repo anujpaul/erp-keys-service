@@ -44,7 +44,7 @@ namespace ERPKeys.Application.Modules.SystemAdmin.Services.ExternalClients
             try
             {
 
-                var response = await _http.GetAsync($"http://ip-api.com/json/131.93.244.88");
+                var response = await _http.GetAsync($"http://ip-api.com/json/{ipAddress}");
 
                 if (!response.IsSuccessStatusCode)
                     return "city";

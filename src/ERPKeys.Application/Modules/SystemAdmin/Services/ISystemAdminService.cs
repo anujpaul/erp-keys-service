@@ -1,4 +1,5 @@
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Common.Services;
 
 namespace ERPKeys.Application.Modules.SystemAdmin.Services;
@@ -22,9 +23,10 @@ public interface ISystemAdminService
     Task                        DeleteRoleAsync(Guid id, CancellationToken ct = default);
 
     // Audit Log
-    Task<IEnumerable<AuditLogDto>> GetAuditLogAsync(
+    Task<PagedResult<AuditLogDto>> GetAuditLogAsync(
         string? module = null, Guid? userId = null,
         DateTime? from = null, DateTime? to = null,
+        int page = 1, int pageSize = 25,
         CancellationToken ct = default);
 
     // Org Settings

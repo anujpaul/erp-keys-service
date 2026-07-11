@@ -127,8 +127,10 @@ public class SystemAdminController : ControllerBase
         [FromQuery] Guid?   userId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
-        CancellationToken ct)
-        => Ok(await _svc.GetAuditLogAsync(module, userId, from, to, ct));
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await _svc.GetAuditLogAsync(module, userId, from, to, page, pageSize, ct));
 
     // ── Org Settings ──────────────────────────────────────────────────────────
 

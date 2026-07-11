@@ -1,4 +1,5 @@
 using ERPKeys.Application.Common.Interfaces;
+using ERPKeys.Application.Common.Models;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Common.Services;
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
@@ -229,11 +230,15 @@ public class SystemAdminService : ISystemAdminService
 
     // ── Audit Log ─────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<AuditLogDto>> GetAuditLogAsync(
+    public async Task<PagedResult<AuditLogDto>> GetAuditLogAsync(
         string? module = null, Guid? userId = null,
         DateTime? from = null, DateTime? to = null,
+        int page = 1, int pageSize = 25,
         CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var q = _db.AuditLogs
             .Where(a => a.OrganizationId == OrgId)
             .AsQueryable();
@@ -243,11 +248,22 @@ public class SystemAdminService : ISystemAdminService
         if (from.HasValue)                      q = q.Where(a => a.OccurredAt >= from.Value);
         if (to.HasValue)                        q = q.Where(a => a.OccurredAt <= to.Value);
 
-        var entries = await q.OrderByDescending(a => a.OccurredAt).Take(500).ToListAsync(ct);
-        return entries.Select(a => new AuditLogDto(
-            a.Id, a.Username, a.Module, a.Action,
-            a.EntityId, a.EntityType, a.OldValues, a.NewValues,
-            a.IpAddress, a.OccurredAt));
+        var totalCount = await q.CountAsync(ct);
+        var entries = await q
+            .OrderByDescending(a => a.OccurredAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<AuditLogDto>(
+            entries.Select(a => new AuditLogDto(
+                a.Id, a.Username, a.Module, a.Action,
+                a.EntityId, a.EntityType, a.OldValues, a.NewValues,
+                a.IpAddress, a.OccurredAt)).ToList(),
+            page,
+            pageSize,
+            totalCount,
+            (int)Math.Ceiling(totalCount / (double)pageSize));
     }
 
     // ── Org Settings ──────────────────────────────────────────────────────────
