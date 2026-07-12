@@ -187,6 +187,10 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.Property(e => e.Currency).HasMaxLength(3);
         b.Property(e => e.TotalDebit).HasColumnType("numeric(18,4)");
         b.Property(e => e.TotalCredit).HasColumnType("numeric(18,4)");
+        b.Property(e => e.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
         b.HasOne(e => e.FiscalPeriod).WithMany().HasForeignKey(e => e.FiscalPeriodId);
         b.HasOne(e => e.Ledger).WithMany().HasForeignKey(e => e.LedgerId)
             .OnDelete(DeleteBehavior.Restrict);

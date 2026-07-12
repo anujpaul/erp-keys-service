@@ -29,6 +29,8 @@ public class JournalEntry : BaseEntity
     private readonly List<JournalLine> _lines = new();
     public IReadOnlyCollection<JournalLine> Lines => _lines.AsReadOnly();
 
+    public uint Version { get; set; }
+
     private JournalEntry() { }
 
     public JournalEntry(Guid organizationId, string entryNumber, DateTime entryDate, Guid fiscalPeriodId,

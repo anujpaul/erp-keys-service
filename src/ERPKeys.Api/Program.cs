@@ -133,15 +133,15 @@ builder.Services.AddHttpClient<IAddressLookupService, GoogleAddressLookupService
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+builder.Services.AddHttpClient<IIpAddressClient, IpAddressClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
-Func<int, bool> isEven = num => num %2 ==0;
+Func<int, bool> isEven = num => num %2 ==0; //Just demoeing  Func Delegate
 
 System.Console.WriteLine($"201 is Even? : {isEven(201)}");
 
-builder.Services.AddHttpClient<IIpAddressClient, IpAddressClient>(client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
 
 builder.Services.AddRateLimiter(options =>
 {

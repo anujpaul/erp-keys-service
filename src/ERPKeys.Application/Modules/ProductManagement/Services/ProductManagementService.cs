@@ -87,11 +87,13 @@ public class ProductManagementService : IProductManagementService
     public async Task<IEnumerable<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
     {
         var cats = await _db.Categories
+            .AsNoTracking()
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name)
             .ToListAsync(ct);
 
         var productCounts = await _db.CatalogProducts
+            .AsNoTracking()
             .Where(p => !p.IsDeleted)
             .GroupBy(p => p.CategoryId)
             .Select(g => new { g.Key, Count = g.Count() })
@@ -304,11 +306,11 @@ public class ProductManagementService : IProductManagementService
         bool cacheFailed = false;
         try
         {
-            var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
+            var cachedProduct = await _cache.GetStringAsync(cacheKey, ct);
 
-            if (cachedJson is not null)
+            if (cachedProduct is not null)
             {
-                return JsonSerializer.Deserialize<ProductDto>(cachedJson);
+                return JsonSerializer.Deserialize<ProductDto>(cachedProduct);
             }
         }
         catch (Exception ex)
