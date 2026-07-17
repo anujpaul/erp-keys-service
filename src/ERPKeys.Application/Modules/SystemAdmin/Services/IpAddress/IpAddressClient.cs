@@ -52,7 +52,7 @@ namespace ERPKeys.Application.Modules.SystemAdmin.Services.ExternalClients
                 var result = await response.Content.ReadFromJsonAsync<IpGeoLocationResponseDto>();
 
                 if (result is null || !string.Equals(result.Status, "success", StringComparison.OrdinalIgnoreCase))
-                    return "Ghost";
+                    return "Developer, Local";
 
                 return $"{result.city}, {result.region}, {result.country}";
 

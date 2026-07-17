@@ -23,6 +23,49 @@ namespace ERPKeys.Infrastructure.Persistence;
 
 public class AppDbContext : DbContext, IAppDbContext
 {
+    private static readonly HashSet<string> CalendarDatePropertyNames = new(StringComparer.Ordinal)
+    {
+        "AcquisitionDate",
+        "ActualShipDate",
+        "BusinessDate",
+        "CreditDate",
+        "Date",
+        "DepreciationStartDate",
+        "DisposalDate",
+        "DueDate",
+        "EndDate",
+        "EntryDate",
+        "ExpectedDate",
+        "ExpenseDate",
+        "ExpiryDate",
+        "FollowUpDate",
+        "InvoiceDate",
+        "InvoiceDueDate",
+        "JournalDate",
+        "LastCountDate",
+        "LastDepreciationDate",
+        "LastReceivedDate",
+        "MaintenanceDate",
+        "NeededByDate",
+        "NextMaintenanceDue",
+        "OrderDate",
+        "PaymentDate",
+        "PeriodEnd",
+        "PeriodStart",
+        "ProposalDate",
+        "QuotationDate",
+        "ReceivedDate",
+        "RequestedDate",
+        "RequestedShipDate",
+        "SentDate",
+        "ShippedDate",
+        "StartDate",
+        "StatementEndDate",
+        "StatementStartDate",
+        "TransferDate",
+        "ValidUntil"
+    };
+
     private readonly ICurrentOrganizationService? _orgService;
 
     public AppDbContext(DbContextOptions<AppDbContext> options,
@@ -197,6 +240,19 @@ public class AppDbContext : DbContext, IAppDbContext
             .IncrementsBy(1_000)
             .HasMax(9_999_000);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // Npgsql's modern timestamp behavior maps DateTime to timestamptz, which is
+        // correct for instants such as CreatedAt, PostedAt, and OccurredAt. Business
+        // calendar dates have no time-zone meaning and must remain PostgreSQL dates.
+        foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(e => e.GetProperties()))
+        {
+            var clrType = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
+            if ((clrType == typeof(DateTime) || clrType == typeof(DateOnly)) &&
+                CalendarDatePropertyNames.Contains(property.Name))
+            {
+                property.SetColumnType("date");
+            }
+        }
 
         // Exclude the obsolete AR Product tombstone — it has no table
         //modelBuilder.Ignore<ERPKeys.Domain.Modules.AccountsReceivable.Product>();

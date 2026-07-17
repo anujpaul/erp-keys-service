@@ -40,11 +40,6 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
-// ── Npgsql: treat DateTime(Unspecified) as UTC globally ──────────────────────
-// Angular sends dates as ISO strings (e.g. "2026-06-02") which .NET deserializes
-// as Kind=Unspecified. Npgsql 6+ requires Kind=Utc for timestamptz columns.
-AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
-
 var builder = WebApplication.CreateBuilder(args);
 
 // ── HTTP Context (needed for CurrentOrganizationService) ─────────────────────
