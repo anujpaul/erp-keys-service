@@ -11,7 +11,8 @@ public enum QuotationStatus
     Rejected  = 5,   // customer rejected
     Expired   = 6,   // past validity date
     Converted = 7,   // converted to a Sales Order
-    Cancelled = 8
+    Cancelled = 8,
+    Approved  = 9    // internally approved and ready to send
 }
 
 /// <summary>
@@ -110,7 +111,7 @@ public class SalesQuotation : BaseEntity
     {
         if (Status != QuotationStatus.Pending)
             throw new InvalidOperationException("Quotation is not pending approval.");
-        Status = QuotationStatus.Sent;
+        Status = QuotationStatus.Approved;
         SetUpdated();
     }
 
@@ -124,11 +125,12 @@ public class SalesQuotation : BaseEntity
         SetUpdated();
     }
 
-    /// <summary>Send directly to customer (no approval required).</summary>
+    /// <summary>Send a Draft quotation directly, or send one after internal approval.</summary>
     public void Send()
     {
-        if (Status != QuotationStatus.Draft)
-            throw new InvalidOperationException("Only a Draft quotation can be sent directly.");
+        if (Status is not (QuotationStatus.Draft or QuotationStatus.Approved))
+            throw new InvalidOperationException(
+                "Only a Draft or Approved quotation can be sent to the customer.");
         if (!_lines.Any())
             throw new InvalidOperationException("Cannot send a quotation with no lines.");
         Status = QuotationStatus.Sent;

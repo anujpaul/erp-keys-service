@@ -20,6 +20,10 @@ public class JournalEntry : BaseEntity
     public decimal TotalCredit { get; private set; }
     public Guid? ReversalOfJournalEntryId { get; private set; }
     public Guid? ReversedByJournalEntryId { get; private set; }
+    public string? SourceModule { get; private set; }
+    public string? SourceDocumentType { get; private set; }
+    public Guid? SourceDocumentId { get; private set; }
+    public string? SourceDocumentNumber { get; private set; }
 
     public FiscalPeriod? FiscalPeriod { get; private set; }
     public Ledger? Ledger { get; private set; }
@@ -125,6 +129,30 @@ public class JournalEntry : BaseEntity
             throw new InvalidOperationException("A journal entry cannot reverse itself.");
 
         ReversalOfJournalEntryId = originalJournalEntryId;
+        SetUpdated();
+    }
+
+    public void SetSourceDocument(
+        string sourceModule,
+        string sourceDocumentType,
+        Guid sourceDocumentId,
+        string sourceDocumentNumber)
+    {
+        if (Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Source document can only be set on a draft journal entry.");
+        if (string.IsNullOrWhiteSpace(sourceModule))
+            throw new ArgumentException("Source module is required.");
+        if (string.IsNullOrWhiteSpace(sourceDocumentType))
+            throw new ArgumentException("Source document type is required.");
+        if (sourceDocumentId == Guid.Empty)
+            throw new ArgumentException("Source document ID is required.");
+        if (string.IsNullOrWhiteSpace(sourceDocumentNumber))
+            throw new ArgumentException("Source document number is required.");
+
+        SourceModule = sourceModule.Trim();
+        SourceDocumentType = sourceDocumentType.Trim();
+        SourceDocumentId = sourceDocumentId;
+        SourceDocumentNumber = sourceDocumentNumber.Trim();
         SetUpdated();
     }
 

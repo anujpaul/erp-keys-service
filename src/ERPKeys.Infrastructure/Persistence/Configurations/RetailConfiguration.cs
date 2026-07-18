@@ -56,7 +56,7 @@ public class POSTransactionConfiguration : IEntityTypeConfiguration<POSTransacti
         b.HasIndex(e => new { e.OrganizationId, e.TransactionNumber }).IsUnique();
         b.HasIndex(e => new { e.OrganizationId, e.ExternalRef })
             .IsUnique()
-            .HasFilter("\"ExternalRef\" IS NOT NULL");
+            .HasFilter("external_ref IS NOT NULL");
         b.HasIndex(e => e.RetailStatementId);
         b.HasIndex(e => e.Status);
 

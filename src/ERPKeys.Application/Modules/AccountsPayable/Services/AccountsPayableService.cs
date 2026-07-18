@@ -1767,6 +1767,8 @@ public class AccountsPayableService : IAccountsPayableService
             invoice.VendorInvoiceRef,
             "Accounts Payable",
             ct);
+        journal.SetSourceDocument(
+            "AccountsPayable", "APInvoice", invoice.Id, invoice.InvoiceNumber);
 
         journal.AddLine(
             accounts[debitAccountNumber].Id,
@@ -1815,6 +1817,8 @@ public class AccountsPayableService : IAccountsPayableService
             payment.Reference ?? invoiceNumber,
             "Accounts Payable Payment",
             ct);
+        journal.SetSourceDocument(
+            "AccountsPayable", "APPayment", payment.Id, payment.PaymentNumber);
 
         journal.AddLine(
             accounts["2110"].Id,

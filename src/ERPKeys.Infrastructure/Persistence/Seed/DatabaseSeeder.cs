@@ -364,7 +364,7 @@ public static class DatabaseSeeder
     {
         // Only skip if variants already exist — products without variants means a partial seed
         if (await db.ProductVariants.IgnoreQueryFilters().AnyAsync(v => v.OrganizationId == orgId)) return;
-        logger.LogInformation("Seeding product catalog (Duluth-style) — variants missing, re-seeding...");
+        logger.LogInformation("Seeding product catalog — variants missing, re-seeding...");
 
         // ── Helper: get-or-create category by code ───────────────────────────
         async Task<Category> GetOrCreateCategory(string code, string name, Guid? parentId, string? imageUrl, int order)
@@ -474,12 +474,17 @@ public static class DatabaseSeeder
         var catWomensFootwear = catSneakers;
         var catCare           = catBeauty;
 
-        // ── Brands ──────────────────────────────────────────────────────────
-        var brandDuluth      = await GetOrCreateBrand("DULUTH",  "Duluth Trading Co.",    "House brand — built for hard work",          "USA", "https://duluthtrading.com");
-        var brandDarnTough   = await GetOrCreateBrand("DARN",    "Darn Tough Vermont",    "Made in Vermont, guaranteed for life",        "USA", "https://darntough.com");
-        var brandFarmFeet    = await GetOrCreateBrand("FARM2FT", "Farm to Feet",          "American-made merino wool socks",             "USA", "https://farmtofeet.com");
-        var brandGhirardelli = await GetOrCreateBrand("GHIR",    "Ghirardelli",           "Premium chocolate since 1852",                "USA", "https://ghirardelli.com");
-        var brandBalega      = await GetOrCreateBrand("BALEGA",  "Balega",                "Performance running & outdoor socks",         "USA", "https://balega.com");
+        // ── Brands ────────────────────────────────────────────────────────── 
+        // Fictional brands used only for ERP demonstration data. Keep these names
+        // generic and avoid real company names, product lines, slogans, and URLs.
+        var brandDemoWorkwear = await GetOrCreateBrand(
+            "DEMO-WORK", "ERPKeys Demo Workwear", "Fictional workwear demo brand", "USA", "https://example.com/demo-workwear");
+        var brandDemoWool = await GetOrCreateBrand(
+            "DEMO-WOOL", "ERPKeys Demo Wool", "Fictional wool apparel demo brand", "USA", "https://example.com/demo-wool");
+        var brandDemoRunning = await GetOrCreateBrand(
+            "DEMO-RUN", "ERPKeys Demo Running", "Fictional athletic demo brand", "USA", "https://example.com/demo-running");
+        var brandDemoConfections = await GetOrCreateBrand(
+            "DEMO-FOOD", "ERPKeys Demo Confections", "Fictional confectionery demo brand", "USA", "https://example.com/demo-confections");
 
         // ── Helper to add product with variants + inventory (idempotent) ────
         async Task AddProduct(
@@ -532,7 +537,7 @@ public static class DatabaseSeeder
         await AddProduct(
             new Product(orgId, "PANT-001", "Work Pants",
                 catMensClothing.Id, ProductType.Clothing, 84.50m, 32.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Men,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Men,
                 "Tough as iron, comfortable all day. Built from our exclusive canvas.",
                 "workwear,pants,tough"),
             new[]
@@ -549,11 +554,11 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "SHIRT-001", "Longtail T-Shirt",
+            new Product(orgId, "SHIRT-001", "Extended-Length T-Shirt",
                 catMensClothing.Id, ProductType.Clothing, 34.50m, 12.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Men,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Men,
                 "Extra-long tails stay tucked. Heavyweight cotton for durability.",
-                "t-shirt,longtail,cotton"),
+                "t-shirt,extended-length,cotton"),
             new[]
             {
                 ("S",   "River Blue",  "Cotton", "884592002010", 30m),
@@ -570,9 +575,9 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "FLANNEL-001", "Alaskan Hardgear Flannel Shirt",
+            new Product(orgId, "FLANNEL-001", "Heavyweight Outdoor Flannel Shirt",
                 catMensClothing.Id, ProductType.Clothing, 89.50m, 34.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Men,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Men,
                 "Heavyweight flannel for serious outdoor work. Double-woven for warmth.",
                 "flannel,shirt,heavyweight,outdoor"),
             new[]
@@ -593,7 +598,7 @@ public static class DatabaseSeeder
         await AddProduct(
             new Product(orgId, "WPANT-001", "Women's Work Pants",
                 catWomensClothing.Id, ProductType.Clothing, 79.50m, 30.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Women,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Women,
                 "All the toughness of with a cut designed for women.",
                 "pants,women"),
             new[]
@@ -611,11 +616,11 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "WSHIRT-001", "Women's Longtail T-Shirt",
+            new Product(orgId, "WSHIRT-001", "Women's Extended-Length T-Shirt",
                 catWomensClothing.Id, ProductType.Clothing, 32.50m, 11.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Women,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Women,
                 "Longer length stays tucked, no matter how you move.",
-                "t-shirt,longtail,women"),
+                "t-shirt,extended-length,women"),
             new[]
             {
                 ("XS", "Blushing Taupe", "Cotton", "884592005010", 20m),
@@ -632,11 +637,11 @@ public static class DatabaseSeeder
         // ── Underwear & Base Layer ───────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "BUCK-M-001", "Buck Naked Performance Underwear — Men",
+            new Product(orgId, "BASE-M-001", "Men's Performance Base Underwear",
                 catUnderwear.Id, ProductType.Clothing, 24.50m, 8.50m, 
-                "Each", brandDuluth.Id, GenderTarget.Men,
-                "No chafing, no bunching, no baloney. Our most popular underwear.",
-                "underwear,buck-naked,men,performance"),
+                "Each", brandDemoWorkwear.Id, GenderTarget.Men,
+                "Lightweight stretch fabric designed for everyday comfort.",
+                "underwear,men,performance,stretch"),
             new[]
             {
                 ("S",   "Slate Gray",  "Nylon/Spandex", "884592006010", 40m),
@@ -653,11 +658,11 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "BUCK-W-001", "Buck Naked Performance Underwear — Women",
+            new Product(orgId, "BASE-W-001", "Women's Performance Base Underwear",
                 catUnderwear.Id, ProductType.Clothing, 22.50m, 8.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Women,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Women,
                 "Silky-smooth, zero chafe. Designed specifically for women.",
-                "underwear,buck-naked,women,performance"),
+                "underwear,women,performance,stretch"),
             new[]
             {
                 ("XS", "Orchid",    "Nylon/Spandex", "884592007010", 35m),
@@ -674,9 +679,9 @@ public static class DatabaseSeeder
         // ── Footwear ─────────────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "BOOT-001", "Duluth XTRATUF Ankle Deck Boot — Men",
+            new Product(orgId, "BOOT-001", "Men's Waterproof Ankle Work Boot",
                 catMensFootwear.Id, ProductType.Footwear, 119.00m, 52.00m, 
-                "Pair", brandDuluth.Id, GenderTarget.Men,
+                "Pair", brandDemoWorkwear.Id, GenderTarget.Men,
                 "100% waterproof. Non-marking, slip-resistant sole. Built for wet conditions.",
                 "boots,waterproof,men,work"),
             new[]
@@ -694,9 +699,9 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "TRAIL-W-001", "Women's Dry on the Fly Trail Runner",
+            new Product(orgId, "TRAIL-W-001", "Women's Lightweight Trail Runner",
                 catWomensFootwear.Id, ProductType.Footwear, 99.00m, 42.00m, 
-                "Pair", brandDuluth.Id, GenderTarget.Women,
+                "Pair", brandDemoRunning.Id, GenderTarget.Women,
                 "Lightweight, breathable trail runner with moisture-wicking tech.",
                 "trail,running,women,breathable"),
             new[]
@@ -715,11 +720,11 @@ public static class DatabaseSeeder
         // ── Socks ─────────────────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "DT-SOCK-HIKE-001", "Darn Tough Vermont Hiker Micro Crew",
+            new Product(orgId, "SOCK-HIKE-001", "Merino Hiking Micro-Crew Sock",
                 catSocks.Id, ProductType.Accessory, 26.00m, 10.00m, 
-                "Pair", brandDarnTough.Id, GenderTarget.Unisex,
-                "Merino wool, guaranteed for life. The last hiking sock you'll ever buy.",
-                "socks,merino,hiking,lifetime-guarantee"),
+                "Pair", brandDemoWool.Id, GenderTarget.Unisex,
+                "Cushioned merino-blend hiking sock designed for trail comfort.",
+                "socks,merino,hiking,cushioned"),
             new[]
             {
                 ("S",  "Olive",  "Merino Wool", "885577001010", 30m),
@@ -733,11 +738,11 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "F2F-SOCK-RUN-001", "Farm to Feet Burlington Running Sock",
+            new Product(orgId, "SOCK-RUN-001", "Cushioned Running Sock",
                 catSocks.Id, ProductType.Accessory, 20.00m, 7.50m, 
-                "Pair", brandFarmFeet.Id, GenderTarget.Unisex,
-                "American-made merino wool. Cushioned, moisture-wicking running sock.",
-                "socks,merino,running,american-made"),
+                "Pair", brandDemoRunning.Id, GenderTarget.Unisex,
+                "Cushioned, moisture-wicking running sock for daily training.",
+                "socks,running,cushioned,moisture-wicking"),
             new[]
             {
                 ("S",  "Navy",   "Merino Wool", "886488001010", 22m),
@@ -751,9 +756,9 @@ public static class DatabaseSeeder
         // ── Wallets ───────────────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "WALL-001", "Duluth RFID-Blocking Leather Bifold Wallet",
+            new Product(orgId, "WALL-001", "RFID-Blocking Leather Bifold Wallet",
                 catWallets.Id, ProductType.Accessory, 49.50m, 18.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Unisex,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Unisex,
                 "Full-grain leather. RFID-blocking tech protects your cards. Made to last.",
                 "wallet,leather,rfid,bifold"),
             new[]
@@ -765,9 +770,9 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "WALL-002", "Duluth Slim Card Holder Wallet",
+            new Product(orgId, "WALL-002", "Slim Card Holder Wallet",
                 catWallets.Id, ProductType.Accessory, 34.50m, 12.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Unisex,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Unisex,
                 "Holds up to 8 cards. Minimalist design with rugged leather construction.",
                 "wallet,slim,minimalist,leather"),
             new[]
@@ -780,11 +785,11 @@ public static class DatabaseSeeder
         // ── Candy & Chocolates ───────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "GHI-CHOC-001", "Ghirardelli Dark Chocolate Square — 72%",
+            new Product(orgId, "CHOC-DARK-001", "Dark Chocolate Square — 72%",
                 catCandy.Id, ProductType.Food, 4.99m, 1.80m, 
-                "Each", brandGhirardelli.Id, GenderTarget.None,
+                "Each", brandDemoConfections.Id, GenderTarget.None,
                 "Individually wrapped dark chocolate. Rich, intense flavor. 72% cacao.",
-                "chocolate,dark,72-percent,ghirardelli"),
+                "chocolate,dark,72-percent,demo"),
             new (string, string?, string?, string?, decimal)[]
             {
                 ("Single",    null, null, "747599310019", 200m),
@@ -794,11 +799,11 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "GHI-CHOC-002", "Ghirardelli Milk Chocolate Caramel Square",
+            new Product(orgId, "CHOC-CARAMEL-001", "Milk Chocolate Caramel Square",
                 catCandy.Id, ProductType.Food, 4.99m, 1.80m, 
-                "Each", brandGhirardelli.Id, GenderTarget.None,
+                "Each", brandDemoConfections.Id, GenderTarget.None,
                 "Creamy milk chocolate wrapped around soft caramel filling.",
-                "chocolate,milk,caramel,ghirardelli"),
+                "chocolate,milk,caramel,demo"),
             new (string, string?, string?, string?, decimal)[]
             {
                 ("Single",    null, null, "747599320018", 180m),
@@ -808,9 +813,9 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "CANDY-001", "Duluth Trail Mix Chocolate Bark",
+            new Product(orgId, "CANDY-001", "Brand D Trail Mix Chocolate Bark",
                 catCandy.Id, ProductType.Food, 12.99m, 4.50m, 
-                "Each", brandDuluth.Id, GenderTarget.None,
+                "Each", brandDemoConfections.Id, GenderTarget.None,
                 "Dark chocolate bark loaded with nuts, seeds, and dried fruit. Trail-ready energy.",
                 "candy,chocolate,trail-mix,bark"),
             new (string, string?, string?, string?, decimal)[]
@@ -824,9 +829,9 @@ public static class DatabaseSeeder
         // ── Creams & Lotions ─────────────────────────────────────────────────
 
         await AddProduct(
-            new Product(orgId, "CREAM-001", "Duluth Trading Lumber Liquidator Hand Cream",
+            new Product(orgId, "CREAM-001", "Brand D Lumber Liquidator Hand Cream",
                 catCream.Id, ProductType.PersonalCare, 14.99m, 5.50m, 
-                "Each", brandDuluth.Id, GenderTarget.Unisex,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Unisex,
                 "Heavy-duty hand cream. Works fast for cracked, rough hands. Unscented.",
                 "cream,hand,heavy-duty,unscented"),
             new (string, string?, string?, string?, decimal)[]
@@ -838,9 +843,9 @@ public static class DatabaseSeeder
         );
 
         await AddProduct(
-            new Product(orgId, "CREAM-002", "Duluth Aloe Vera After-Sun Lotion",
+            new Product(orgId, "CREAM-002", "Brand D Aloe Vera After-Sun Lotion",
                 catCream.Id, ProductType.PersonalCare, 11.99m, 4.00m, 
-                "Each", brandDuluth.Id, GenderTarget.Unisex,
+                "Each", brandDemoWorkwear.Id, GenderTarget.Unisex,
                 "Soothing aloe vera lotion for sun-exposed skin. Lightweight, fast absorbing.",
                 "lotion,aloe-vera,after-sun,soothing"),
             new (string, string?, string?, string?, decimal)[]

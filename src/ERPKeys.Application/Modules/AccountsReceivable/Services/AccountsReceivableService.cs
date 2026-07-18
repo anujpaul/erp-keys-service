@@ -1286,6 +1286,20 @@ public class AccountsReceivableService : IAccountsReceivableService
         if (requestedLines.GroupBy(l => l.LineId).Any(g => g.Count() > 1))
             throw new InvalidOperationException("A sales order line can only appear once in a shipment.");
 
+        var shipmentCosts = requestedLines
+            .Select(requestedLine =>
+            {
+                if (!activeLines.TryGetValue(requestedLine.LineId, out var orderLine))
+                    throw new InvalidOperationException(
+                        "Shipment contains a line that is not on this sales order.");
+
+                return (
+                    orderLine.Sku,
+                    records[orderLine.ProductVariantId].AverageCost);
+            })
+            .ToList();
+        ShipmentCostPolicy.EnsureValidCosts(shipmentCosts);
+
         foreach (var requestedLine in requestedLines)
         {
             if (!activeLines.TryGetValue(requestedLine.LineId, out var orderLine))
@@ -1378,6 +1392,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             invoice.SalesOrder?.Currency ?? "USD",
             postingContext,
             ct);
+        journal.SetSourceDocument(
+            "AccountsReceivable", "ARInvoice", invoice.Id, invoice.InvoiceNumber);
 
         foreach (var line in BuildInvoicePostingLines(invoice, accounts))
             journal.AddLine(line.AccountId, line.Description, line.Debit, line.Credit);
@@ -1448,6 +1464,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             invoice.SalesOrder?.Currency ?? "USD",
             postingContext,
             ct);
+        journal.SetSourceDocument(
+            "AccountsReceivable", "ARPayment", payment.Id, payment.PaymentNumber);
 
         journal.AddLine(accounts["Receipt"].Id, $"Receipt for {invoice.InvoiceNumber}",
             payment.Amount, 0m);
@@ -1481,6 +1499,8 @@ public class AccountsReceivableService : IAccountsReceivableService
             order.Currency,
             postingContext,
             ct);
+        journal.SetSourceDocument(
+            "AccountsReceivable", "SalesOrder", order.Id, order.OrderNumber);
 
         journal.AddLine(accounts["CostOfGoodsSold"].Id, $"COGS - {order.OrderNumber}", shipmentCost, 0m);
         journal.AddLine(accounts["Inventory"].Id, $"Inventory issued - {order.OrderNumber}", 0m, shipmentCost);

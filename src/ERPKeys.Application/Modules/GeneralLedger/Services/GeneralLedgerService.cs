@@ -2617,6 +2617,8 @@ public class GeneralLedgerService : IGeneralLedgerService
         e.Description, e.Reference, e.JournalType,
         e.Status.ToString(), e.Currency,
         e.TotalDebit, e.TotalCredit, e.CreatedAt,
+        e.SourceModule, e.SourceDocumentType,
+        e.SourceDocumentId, e.SourceDocumentNumber,
         e.ReversalOfJournalEntryId,
         e.ReversalOfJournalEntry?.EntryNumber,
         e.ReversedByJournalEntryId,

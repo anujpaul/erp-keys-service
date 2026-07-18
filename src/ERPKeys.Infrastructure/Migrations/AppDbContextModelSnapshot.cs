@@ -5294,6 +5294,25 @@ namespace ERPKeys.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("reversed_by_journal_entry_id");
 
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_document_id");
+
+                    b.Property<string>("SourceDocumentNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source_document_number");
+
+                    b.Property<string>("SourceDocumentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source_document_type");
+
+                    b.Property<string>("SourceModule")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source_module");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -5340,6 +5359,9 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "EntryNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_journal_entries_organization_id_entry_number");
+
+                    b.HasIndex("OrganizationId", "SourceModule", "SourceDocumentType", "SourceDocumentId")
+                        .HasDatabaseName("ix_journal_entries_organization_id_source_module_source_document_type_source_document_id");
 
                     b.ToTable("journal_entries", (string)null);
                 });
@@ -7373,7 +7395,7 @@ namespace ERPKeys.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "ExternalRef")
                         .IsUnique()
                         .HasDatabaseName("ix_pos_transactions_organization_id_external_ref")
-                        .HasFilter("\"ExternalRef\" IS NOT NULL");
+                        .HasFilter("external_ref IS NOT NULL");
 
                     b.HasIndex("OrganizationId", "TransactionNumber")
                         .IsUnique()

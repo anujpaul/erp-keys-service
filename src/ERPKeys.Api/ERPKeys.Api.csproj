@@ -18,4 +18,7 @@
     <PackageReference Include="Microsoft.OpenApi" Version="1.6.22" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.23" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="uploads\imports\" />
+  </ItemGroup>
 </Project>

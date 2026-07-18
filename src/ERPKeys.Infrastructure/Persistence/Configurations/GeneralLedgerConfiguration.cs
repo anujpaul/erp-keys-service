@@ -185,6 +185,9 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.Property(e => e.JournalType).HasMaxLength(50);
         b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(e => e.Currency).HasMaxLength(3);
+        b.Property(e => e.SourceModule).HasMaxLength(50);
+        b.Property(e => e.SourceDocumentType).HasMaxLength(50);
+        b.Property(e => e.SourceDocumentNumber).HasMaxLength(100);
         b.Property(e => e.TotalDebit).HasColumnType("numeric(18,4)");
         b.Property(e => e.TotalCredit).HasColumnType("numeric(18,4)");
         b.Property(e => e.Version)
@@ -203,6 +206,13 @@ public class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
         b.HasMany(e => e.Lines).WithOne(l => l.JournalEntry)
             .HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(e => new { e.OrganizationId, e.EntryNumber }).IsUnique();
+        b.HasIndex(e => new
+        {
+            e.OrganizationId,
+            e.SourceModule,
+            e.SourceDocumentType,
+            e.SourceDocumentId
+        });
         b.HasIndex(e => e.ReversalOfJournalEntryId).IsUnique()
             .HasFilter("reversal_of_journal_entry_id IS NOT NULL AND is_deleted = FALSE");
         b.HasIndex(e => e.ReversedByJournalEntryId).IsUnique()

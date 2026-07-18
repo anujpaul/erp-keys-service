@@ -177,6 +177,8 @@ public record JournalEntryDto(Guid Id, Guid LedgerId, string LedgerCode,
     Guid FiscalPeriodId, string FiscalPeriodName, string Description,
     string Reference, string JournalType, string Status, string Currency,
     decimal TotalDebit, decimal TotalCredit, DateTime CreatedAt,
+    string? SourceModule, string? SourceDocumentType,
+    Guid? SourceDocumentId, string? SourceDocumentNumber,
     Guid? ReversalOfJournalEntryId, string? ReversalOfJournalEntryNumber,
     Guid? ReversedByJournalEntryId, string? ReversedByJournalEntryNumber,
     IReadOnlyList<JournalLineDto> Lines);
