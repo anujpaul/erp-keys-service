@@ -1,9 +1,9 @@
-using System.Security.Claims;
+using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.Organization.DTOs;
 using ERPKeys.Application.Modules.Organization.Services;
-using ERPKeys.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace ERPKeys.Api.Controllers;
 

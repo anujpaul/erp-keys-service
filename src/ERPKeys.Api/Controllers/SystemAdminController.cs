@@ -1,7 +1,7 @@
-using ERPKeys.Application.Modules.SystemAdmin.DTOs;
-using ERPKeys.Application.Modules.SystemAdmin.Services;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Common.Services;
+using ERPKeys.Application.Modules.SystemAdmin.DTOs;
+using ERPKeys.Application.Modules.SystemAdmin.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -47,7 +47,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemUsersManage)]
     public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest req, CancellationToken ct)
     {
-        try   { return Ok(await _svc.UpdateUserAsync(id, req, ct)); }
+        try { return Ok(await _svc.UpdateUserAsync(id, req, ct)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -71,7 +71,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemUsersManage)]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req, CancellationToken ct)
     {
-        try   { await _svc.ResetPasswordAsync(req, ct); return NoContent(); }
+        try { await _svc.ResetPasswordAsync(req, ct); return NoContent(); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -106,7 +106,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemRolesManage)]
     public async Task<IActionResult> UpdateRole(Guid id, [FromBody] UpdateRoleRequest req, CancellationToken ct)
     {
-        try   { return Ok(await _svc.UpdateRoleAsync(id, req, ct)); }
+        try { return Ok(await _svc.UpdateRoleAsync(id, req, ct)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -114,7 +114,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemRolesManage)]
     public async Task<IActionResult> DeleteRole(Guid id, CancellationToken ct)
     {
-        try   { await _svc.DeleteRoleAsync(id, ct); return NoContent(); }
+        try { await _svc.DeleteRoleAsync(id, ct); return NoContent(); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -124,7 +124,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemAuditView)]
     public async Task<IActionResult> GetAuditLog(
         [FromQuery] string? module,
-        [FromQuery] Guid?   userId,
+        [FromQuery] Guid? userId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         [FromQuery] int page = 1,
@@ -143,7 +143,7 @@ public class SystemAdminController : ControllerBase
     [Authorize(Policy = PermissionKeys.SystemSettingsManage)]
     public async Task<IActionResult> UpdateOrgSettings([FromBody] UpdateOrgSettingsRequest req, CancellationToken ct)
     {
-        try   { return Ok(await _svc.UpdateOrgSettingsAsync(req, ct)); }
+        try { return Ok(await _svc.UpdateOrgSettingsAsync(req, ct)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -159,7 +159,7 @@ public class SystemAdminController : ControllerBase
         [FromBody] UpdateNumberSequenceRequest req,
         CancellationToken ct)
     {
-        try   { return Ok(await _svc.UpdateNumberSequenceAsync(area, req, ct)); }
+        try { return Ok(await _svc.UpdateNumberSequenceAsync(area, req, ct)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 }

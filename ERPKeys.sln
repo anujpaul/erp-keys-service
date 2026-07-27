@@ -17,6 +17,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ERPKeys.Application.Tests", "tests\ERPKeys.Application.Tests\ERPKeys.Application.Tests.csproj", "{CE1941F0-ACF3-44ED-BF7D-E4B5A7EF8F1C}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E50B45EA-EA2A-4343-B3F7-7938737CC305}"
+	ProjectSection(SolutionItems) = preProject
+		.env = .env
+		.gitignore = .gitignore
+		erpkeys-deployment.yaml = erpkeys-deployment.yaml
+		erpkeys-ingress.yaml = erpkeys-ingress.yaml
+		erpkeys-service.yaml = erpkeys-service.yaml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

@@ -1,6 +1,6 @@
+using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.ProductManagement.DTOs;
 using ERPKeys.Application.Modules.ProductManagement.Services;
-using ERPKeys.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -101,7 +101,11 @@ public class ProductManagementController : ControllerBase
     [HttpGet("products/{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id, CancellationToken ct)
     {
+        var podName = Environment.GetEnvironmentVariable("HOSTNAME") ?? "unknown-host";
+        
         var product = await _pm.GetProductAsync(id, ct);
+
+        Response.Headers.Append("X-Pod-Name", podName);
         return product is null ? NotFound() : Ok(product);
     }
 

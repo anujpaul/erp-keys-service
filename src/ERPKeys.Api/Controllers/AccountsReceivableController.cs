@@ -1,6 +1,6 @@
+using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.AccountsReceivable.DTOs;
 using ERPKeys.Application.Modules.AccountsReceivable.Services;
-using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.Charges;
 using ERPKeys.Domain.Modules.GeneralLedger;
 using Microsoft.AspNetCore.Authorization;
