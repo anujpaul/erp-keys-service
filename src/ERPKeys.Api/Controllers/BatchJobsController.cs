@@ -28,8 +28,8 @@ public class BatchJobsController : ControllerBase
     {
         _svc = svc;
         _org = org;
-        _dm  = dm;
-        _db  = db;
+        _dm = dm;
+        _db = db;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -149,9 +149,16 @@ public class BatchJobsController : ControllerBase
         var rows = await q
             .OrderByDescending(r => r.ExportedAt)
             .Take(200)
-            .Select(r => new {
-                r.Id, r.EntityType, r.EntityId, r.EntityRef,
-                r.BlobName, r.Status, r.ExportedAt, r.ErrorMessage
+            .Select(r => new
+            {
+                r.Id,
+                r.EntityType,
+                r.EntityId,
+                r.EntityRef,
+                r.BlobName,
+                r.Status,
+                r.ExportedAt,
+                r.ErrorMessage
             })
             .ToListAsync(ct);
 

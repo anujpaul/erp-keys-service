@@ -51,7 +51,7 @@ public class PriceAgreementController : ControllerBase
     {
         try { return Ok(await _svc.UpdateAsync(_org.OrganizationId, id, req, ct)); }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (ArgumentException ex)    { return BadRequest(new { error = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     /// <summary>Delete a price agreement.</summary>

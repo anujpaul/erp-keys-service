@@ -114,7 +114,7 @@ public class DataManagementController : ControllerBase
         var updated = await _svc.GetImportJobAsync(job.Id, ct);
         return Accepted(new
         {
-            job     = updated,
+            job = updated,
             message = $"File staged. {updated!.ValidRows} rows valid, {updated.InvalidRows} rows invalid. Call /import-jobs/{job.Id}/promote to apply valid rows."
         });
     }

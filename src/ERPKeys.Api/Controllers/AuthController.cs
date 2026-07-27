@@ -1,8 +1,8 @@
-using System.Security.Claims;
 using ERPKeys.Application.Modules.SystemAdmin.DTOs;
 using ERPKeys.Application.Modules.SystemAdmin.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace ERPKeys.Api.Controllers;
 
@@ -22,7 +22,7 @@ public class AuthController : ControllerBase
         try
         {
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
-            var result    = await _auth.LoginAsync(req, ipAddress, ct);
+            var result = await _auth.LoginAsync(req, ipAddress, ct);
             return Ok(result);
         }
         catch (Exception ex)
@@ -126,11 +126,11 @@ public class AuthController : ControllerBase
         var claims = User.Claims.Select(c => new { c.Type, c.Value });
         return Ok(new
         {
-            id       = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"),
+            id = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"),
             username = User.FindFirstValue("username"),
-            email    = User.FindFirstValue(ClaimTypes.Email),
-            orgId    = User.FindFirstValue("orgId"),
-            roles    = User.FindAll(ClaimTypes.Role).Select(c => c.Value),
+            email = User.FindFirstValue(ClaimTypes.Email),
+            orgId = User.FindFirstValue("orgId"),
+            roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value),
             permissions = User.FindAll("permission").Select(c => c.Value)
         });
     }

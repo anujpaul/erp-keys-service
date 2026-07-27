@@ -1,6 +1,6 @@
+using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.InventoryManagement.DTOs;
 using ERPKeys.Application.Modules.InventoryManagement.Services;
-using ERPKeys.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

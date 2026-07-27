@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erpkeys-api
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: erpkeys-api
+  template:
+    metadata:
+      labels:
+        app: erpkeys-api
+    spec:
+      containers:
+        - name: erpkeys-api
+          image: erpkeysapi:release
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: erpkeys-secrets
+          resources:
+            limits:
+              memory: "2000Mi"
+              cpu: "1000m"
+            requests:
+              memory: "1500Mi"
+              cpu: "500m"

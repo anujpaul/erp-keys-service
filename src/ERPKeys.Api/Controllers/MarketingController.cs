@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using ERPKeys.Application.Common.Interfaces;
 using ERPKeys.Application.Common.Security;
 using ERPKeys.Application.Modules.Marketing.DTOs;
@@ -7,6 +6,7 @@ using ERPKeys.Domain.Modules.Retail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Xml.Linq;
 
 namespace ERPKeys.Api.Controllers;
 
@@ -24,7 +24,7 @@ public class MarketingController : ControllerBase
     {
         _svc = svc;
         _org = org;
-        _db  = db;
+        _db = db;
     }
 
     // ── Campaigns ──────────────────────────────────────────────────────────────
@@ -265,16 +265,16 @@ public class MarketingController : ControllerBase
         var doc = new XDocument(
             new XDeclaration("1.0", "utf-8", null),
             new XElement("PromoItemsCatalog",
-                new XAttribute("exportedAt",      today.ToString("yyyy-MM-dd")),
+                new XAttribute("exportedAt", today.ToString("yyyy-MM-dd")),
                 new XAttribute("totalPromotions", activePromos.Count),
 
                 new XElement("ActivePromotions",
                     activePromos.Select(p => new XElement("Promotion",
-                        new XElement("Name",        p.Name),
-                        new XElement("Type",        p.DiscountType.ToString()),
-                        new XElement("Value",       p.DiscountValue.ToString("F2")),
-                        new XElement("StartDate",   p.StartDate.ToString("yyyy-MM-dd")),
-                        new XElement("EndDate",     p.EndDate?.ToString("yyyy-MM-dd") ?? "ongoing"),
+                        new XElement("Name", p.Name),
+                        new XElement("Type", p.DiscountType.ToString()),
+                        new XElement("Value", p.DiscountValue.ToString("F2")),
+                        new XElement("StartDate", p.StartDate.ToString("yyyy-MM-dd")),
+                        new XElement("EndDate", p.EndDate?.ToString("yyyy-MM-dd") ?? "ongoing"),
                         new XElement("MinOrderAmt", p.MinimumOrderAmount.ToString("F2") ?? "0.00")
                     ))
                 ),
@@ -310,7 +310,8 @@ public class MarketingController : ControllerBase
         using var ms = new System.IO.MemoryStream();
         using (var writer = System.Xml.XmlWriter.Create(ms, new System.Xml.XmlWriterSettings
         {
-            Indent = true, IndentChars = "\t",
+            Indent = true,
+            IndentChars = "\t",
             Encoding = new System.Text.UTF8Encoding(false)
         }))
             doc.Save(writer);
@@ -337,29 +338,29 @@ public class MarketingController : ControllerBase
                 : originalPrice;
 
         return new XElement("Product",
-            new XElement("Sku",            p.Sku),
-            new XElement("Name",           p.Name),
-            new XElement("Description",    p.Description ?? ""),
-            new XElement("Brand",          p.Brand?.Name ?? ""),
-            new XElement("Gender",         p.GenderTarget.ToString()),
-            new XElement("UnitOfMeasure",  p.UnitOfMeasure),
-            new XElement("Currency",       p.Currency),
+            new XElement("Sku", p.Sku),
+            new XElement("Name", p.Name),
+            new XElement("Description", p.Description ?? ""),
+            new XElement("Brand", p.Brand?.Name ?? ""),
+            new XElement("Gender", p.GenderTarget.ToString()),
+            new XElement("UnitOfMeasure", p.UnitOfMeasure),
+            new XElement("Currency", p.Currency),
             new XElement("Pricing",
-                new XElement("OriginalPrice",   originalPrice.ToString("F2")),
+                new XElement("OriginalPrice", originalPrice.ToString("F2")),
                 new XElement("DiscountedPrice", discountedPrice.ToString("F2")),
-                new XElement("Saving",         (originalPrice - discountedPrice).ToString("F2")),
-                new XElement("PromoApplied",   bestPromo?.Name ?? "None"),
-                new XElement("PromoType",      bestPromo?.DiscountType.ToString() ?? ""),
-                new XElement("PromoValue",     bestPromo?.DiscountValue.ToString("F2") ?? "0.00")
+                new XElement("Saving", (originalPrice - discountedPrice).ToString("F2")),
+                new XElement("PromoApplied", bestPromo?.Name ?? "None"),
+                new XElement("PromoType", bestPromo?.DiscountType.ToString() ?? ""),
+                new XElement("PromoValue", bestPromo?.DiscountValue.ToString("F2") ?? "0.00")
             ),
             new XElement("Variants",
                 p.Variants.Where(v => !v.IsDeleted).Select(v => new XElement("Variant",
-                    new XElement("VariantSku",  v.Sku),
-                    new XElement("Size",        v.Size ?? ""),
-                    new XElement("Color",       v.Color ?? ""),
-                    new XElement("Material",    v.Material ?? ""),
-                    new XElement("Price",       v.EffectivePrice(p.BasePrice).ToString("F2")),
-                    new XElement("PromoPrice",  (bestPromo?.DiscountType == DiscountType.PercentageOff
+                    new XElement("VariantSku", v.Sku),
+                    new XElement("Size", v.Size ?? ""),
+                    new XElement("Color", v.Color ?? ""),
+                    new XElement("Material", v.Material ?? ""),
+                    new XElement("Price", v.EffectivePrice(p.BasePrice).ToString("F2")),
+                    new XElement("PromoPrice", (bestPromo?.DiscountType == DiscountType.PercentageOff
                         ? Math.Round(v.EffectivePrice(p.BasePrice) * (1 - bestPromo.DiscountValue / 100), 2)
                         : discountedPrice).ToString("F2"))
                 ))
