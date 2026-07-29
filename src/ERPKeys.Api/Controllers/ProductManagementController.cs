@@ -102,7 +102,6 @@ public class ProductManagementController : ControllerBase
     public async Task<IActionResult> GetProduct(Guid id, CancellationToken ct)
     {
         var podName = Environment.GetEnvironmentVariable("HOSTNAME") ?? "unknown-host";
-        
         var product = await _pm.GetProductAsync(id, ct);
 
         Response.Headers.Append("X-Pod-Name", podName);
