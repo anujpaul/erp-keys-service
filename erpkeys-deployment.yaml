@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: erpkeys-api
-          image: erpkeysapi:release
-          imagePullPolicy: IfNotPresent
+          image: anujpaul/erpkeysapi:release
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           envFrom:
